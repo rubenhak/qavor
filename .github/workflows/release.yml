@@ -35,12 +35,11 @@ jobs:
         uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          # Do not set registry-url here: it wires NODE_AUTH_TOKEN into .npmrc and breaks npm Trusted
-          # Publishing (OIDC), which surfaces as a misleading E404 on PUT.
-          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false  # never use caching in release builds
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -69,7 +68,7 @@ jobs:
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
           echo "Publishing ${PKG}@${VERSION}..."
-          unset NODE_AUTH_TOKEN NPM_TOKEN
+          # unset NODE_AUTH_TOKEN NPM_TOKEN
           npm publish --access public
           # pnpm publish --access public --no-git-checks
 

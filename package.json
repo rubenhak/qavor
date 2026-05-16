@@ -9,7 +9,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "bin": {
     "qavor": "./dist/index.js"
@@ -45,7 +45,7 @@
     "yaml": "^2.7.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
+    "@types/node": "^24.12.4",
     "json-schema-to-typescript": "^15.0.4",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
