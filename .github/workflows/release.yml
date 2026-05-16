@@ -36,9 +36,9 @@ jobs:
         uses: actions/checkout@v6
 
       # registry-url is required for npm Trusted Publishing on GitHub Actions (npm docs).
-      # setup-node writes _authToken=${NODE_AUTH_TOKEN} into .npmrc; we delete that key before
-      # publishing so npm’s OIDC exchange fires instead of failing with ENEEDAUTH
-      # (github.com/actions/setup-node/issues/1440).
+      # setup-node sets NPM_CONFIG_USERCONFIG to a temp .npmrc with an _authToken placeholder;
+      # we unset that var at publish time so npm uses ~/.npmrc (no token) and falls through to OIDC
+      # instead of throwing ENEEDAUTH (github.com/actions/setup-node/issues/1440).
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -86,14 +86,12 @@ jobs:
       - name: Upgrade npm for Trusted Publishing (OIDC)
         run: npm install -g npm@^11.6.2
 
-      # setup-node writes `_authToken=${NODE_AUTH_TOKEN}` into .npmrc. `env -u` only unsets the env
-      # var; npm still sees an _authToken entry (empty) and throws ENEEDAUTH instead of falling
-      # through to OIDC. Deleting the config key entirely is what makes OIDC kick in.
-      - name: Clear placeholder auth token for OIDC
-        run: npm config delete //registry.npmjs.org/:_authToken
-
       # pnpm runs a separate OIDC token exchange (ERR_PNPM_AUTH_TOKEN_EXCHANGE / 404) that often
       # fails even when Trusted Publishing + npm are correct; npm publish uses npm's OIDC path.
+      #
+      # setup-node sets NPM_CONFIG_USERCONFIG to a temp .npmrc containing `_authToken=${NODE_AUTH_TOKEN}`.
+      # Unsetting NPM_CONFIG_USERCONFIG makes npm fall back to ~/.npmrc (no _authToken), which causes
+      # it to detect the OIDC environment and attempt the token exchange instead of throwing ENEEDAUTH.
       - name: Publish to npm
         env:
           NPM_CONFIG_PROVENANCE: true
@@ -101,7 +99,7 @@ jobs:
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
           echo "Publishing ${PKG}@${VERSION}..."
-          npm publish --access public
+          env -u NPM_CONFIG_USERCONFIG npm publish --access public
 
       - name: Commit version bump and push branch + release tag
         env:
