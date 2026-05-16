@@ -103,7 +103,7 @@ jobs:
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
           echo "Publishing ${PKG}@${VERSION}..."
-          npm publish --access public
+          npm publish --access public --loglevel verbose
 
       - name: Commit version bump and push branch + release tag
         env:
