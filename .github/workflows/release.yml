@@ -48,6 +48,9 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Lint
+        run: pnpm lint
+
       - name: Check generated manifest types
         run: pnpm gen:types:check
 
@@ -55,7 +58,55 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
-        run: pnpm test
+        id: test
+        continue-on-error: true
+        run: |
+          node --import tsx --test \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=tap --test-reporter-destination=test-results.tap \
+            'test/**/*.test.ts'
+
+      - name: Test summary
+        if: always() && hashFiles('test-results.tap') != ''
+        run: |
+          PASSED=$(grep "^# pass " test-results.tap | awk '{print $3}' || true)
+          FAILED=$(grep "^# fail " test-results.tap | awk '{print $3}' || true)
+          SKIPPED=$(grep "^# skipped " test-results.tap | awk '{print $3}' || true)
+          TOTAL=$(grep "^# tests " test-results.tap | awk '{print $3}' || true)
+          DURATION=$(grep "^# duration_ms " test-results.tap | awk '{print $3}' || true)
+          PASSED=${PASSED:-0}; FAILED=${FAILED:-0}; SKIPPED=${SKIPPED:-0}
+          TOTAL=${TOTAL:-0}; DURATION=${DURATION:-0}
+
+          if [[ "$FAILED" -gt 0 ]]; then STATUS="❌ Tests Failed"; else STATUS="✅ Tests Passed"; fi
+
+          {
+            echo "## $STATUS"
+            echo ""
+            echo "| | Count |"
+            echo "|---|---|"
+            echo "| ✅ Passed | $PASSED |"
+            echo "| ❌ Failed | $FAILED |"
+            echo "| ⏭️ Skipped | $SKIPPED |"
+            echo "| **Total** | **$TOTAL** |"
+            echo ""
+            echo "_Duration: ${DURATION}ms_"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$FAILED" -gt 0 ]]; then
+            {
+              echo ""
+              echo "### Failed Tests"
+              echo ""
+              grep "^  " test-results.tap | grep " not ok " \
+                | sed 's/^[[:space:]]*not ok [0-9]* - //' \
+                | sort -u \
+                | sed 's/^/- ❌ /'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Assert tests passed
+        if: always() && steps.test.outcome == 'failure'
+        run: exit 1
 
       - name: Commit, tag, and push
         env:
@@ -69,6 +120,23 @@ jobs:
           git tag "v${VERSION}"
           git push origin HEAD:"${BRANCH_NAME}"
           git push origin "v${VERSION}"
+
+      - name: Release summary
+        run: |
+          VERSION=$(jq -r .version package.json)
+          REPO="${{ github.repository }}"
+          {
+            echo "## 🚀 Released v${VERSION}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| **Version** | \`v${VERSION}\` |"
+            echo "| **Bump** | \`${{ github.event.inputs.bump }}\` |"
+            echo "| **Tag** | [\`v${VERSION}\`](https://github.com/${REPO}/releases/tag/v${VERSION}) |"
+            echo "| **Actor** | @${{ github.actor }} |"
+            echo ""
+            echo "_Publish workflow triggered via \`workflow_call\`._"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   publish:
     needs: release

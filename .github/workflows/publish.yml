@@ -47,3 +47,17 @@ jobs:
           VERSION="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")"
           echo "Publishing qavor@${VERSION}..."
           pnpm publish --no-git-checks
+
+      - name: Publish summary
+        run: |
+          VERSION=$(jq -r .version package.json)
+          PKG=$(jq -r .name package.json)
+          {
+            echo "## 📦 Published to npm"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| **Package** | [\`${PKG}\`](https://www.npmjs.com/package/${PKG}) |"
+            echo "| **Version** | [\`${VERSION}\`](https://www.npmjs.com/package/${PKG}/v/${VERSION}) |"
+            echo "| **Tag** | \`${{ github.ref_name }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
