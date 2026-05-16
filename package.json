@@ -1,6 +1,6 @@
 {
   "name": "qavor",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A CLI for managing a constellation of related repositories as one cohesive developer workspace.",
   "repository": {
     "type": "git",
@@ -9,10 +9,11 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=26",
+    "pnpm": ">=11"
   },
   "bin": {
-    "qavor": "./dist/index.js"
+    "qavor": "dist/index.js"
   },
   "main": "./dist/index.js",
   "files": [
@@ -51,7 +52,7 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   },
-  "packageManager": "pnpm@9.15.9",
+  "packageManager": "pnpm@11.1.2",
   "publishConfig": {
     "access": "public",
     "provenance": true
