@@ -13,31 +13,31 @@ All manifests share three conventions:
   `container` is added on top depending on run mode. Workspace `.env`, user
   `.env.local`, and `--env KEY=VAL` continue to override on top of that.
 
-The structure should be as following:
+A typical workspace on disk looks like this:
 
 ```
-- root workspace dir (not a git repo)
-  - qavor.yaml               # workspace manifest
-  - project-repo.git
-    - qavor.yaml             # root project manifest
-  - service-repo-1.git
-    - qavor.yaml             # service manifest
-  - service-repo-2.git
-    - qavor.yaml             # service manifest
-  - multi-service-repo-3.git
-    - service-foo
-      - qavor.yaml             # service manifest
-    - service-bar
-      - qavor.yaml             # service manifest
-  - stateful-dependencies.git
-    - qavor.yaml             # repo manifest
-    - postgresql
-      - qavor.yaml           # dependency manifest
-    - kafka
-      - qavor.yaml           # dependency manifest
-    - rabbitmq
-      - qavor.yaml           # dependency manifest
-  - another-repo.git         # does not necessarily need to contain a qavor.yaml file
+<workspace>/                       # root workspace dir (not a git repo)
+├── qavor.yaml                     # workspace manifest          (kind: workspaces)
+├── project-repo.git/              # project repo: workspace identity + repo list
+│   └── qavor.yaml                 # project manifest            (kind: project)
+├── service-repo-1.git/            # single-service repo
+│   └── qavor.yaml                 # service manifest            (kind: service)
+├── service-repo-2.git/
+│   └── qavor.yaml                 # service manifest            (kind: service)
+├── multi-service-repo-3.git/      # repo hosting multiple services
+│   ├── service-foo/
+│   │   └── qavor.yaml             # service manifest            (kind: service)
+│   └── service-bar/
+│       └── qavor.yaml             # service manifest            (kind: service)
+├── stateful-dependencies.git/     # repo grouping backing deps
+│   ├── qavor.yaml                 # repo manifest               (kind: repo)
+│   ├── postgresql/
+│   │   └── qavor.yaml             # stateful manifest           (kind: stateful)
+│   ├── kafka/
+│   │   └── qavor.yaml             # stateful manifest           (kind: stateful)
+│   └── rabbitmq/
+│       └── qavor.yaml             # stateful manifest           (kind: stateful)
+└── another-repo.git/              # plain repo; qavor.yaml is optional
 ```
 
 ## Workspaces Manifest
