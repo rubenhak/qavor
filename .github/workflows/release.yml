@@ -44,8 +44,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # - name: Bump version (${{ github.event.inputs.bump }})
-      #   run: pnpm version ${{ github.event.inputs.bump }} --no-git-tag-version
+      - name: Bump version (${{ github.event.inputs.bump }})
+        run: pnpm version ${{ github.event.inputs.bump }} --no-git-tag-version
 
       - name: Build
         run: pnpm run build
