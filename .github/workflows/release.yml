@@ -38,7 +38,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          registry-url: https://registry.npmjs.org
+          # Do not set registry-url here: it wires NODE_AUTH_TOKEN into .npmrc and breaks npm Trusted
+          # Publishing (OIDC), which surfaces as a misleading E404 on PUT.
           cache: pnpm
 
       - name: Install dependencies
@@ -59,12 +60,18 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # Trusted publishing requires npm CLI >= 11.5.1 (bundled npm on older Node 22.x may be too old).
+      - name: Upgrade npm for Trusted Publishing (OIDC)
+        run: npm install -g npm@^11.5.1
+
       - name: Publish to npm
         run: |
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
           echo "Publishing ${PKG}@${VERSION}..."
-          pnpm publish --access public --no-git-checks
+          unset NODE_AUTH_TOKEN NPM_TOKEN
+          npm publish --access public
+          # pnpm publish --access public --no-git-checks
 
       - name: Commit version bump and push branch + release tag
         env:
