@@ -103,7 +103,8 @@ jobs:
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
           echo "Publishing ${PKG}@${VERSION}..."
-          npm publish --access public --loglevel verbose
+          # npm publish --access public --loglevel verbose
+          pnpm publish --access public --no-git-checks
 
       - name: Commit version bump and push branch + release tag
         env:
@@ -113,7 +114,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "ci@users.noreply.github.com"
           git add package.json
-          git commit -m "chore(release): v${VERSION}"
+          git commit -m "🤖 Release: v${VERSION}"
           git tag "v${VERSION}"
           git push origin HEAD:"${BRANCH_NAME}"
           git push origin "v${VERSION}"
