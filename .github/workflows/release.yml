@@ -38,20 +38,20 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
 
-      # - name: Install pnpm
-      #   uses: pnpm/action-setup@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
 
-      # - name: Install dependencies
-      #   run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      # - name: Bump version (${{ github.event.inputs.bump }})
-      #   run: pnpm version ${{ github.event.inputs.bump }} --no-git-tag-version
+      - name: Bump version (${{ github.event.inputs.bump }})
+        run: pnpm version ${{ github.event.inputs.bump }} --no-git-tag-version
 
-      # - name: Build
-      #   run: pnpm run build
+      - name: Build
+        run: pnpm run build
 
-      - run: npm install
-      - run: npm run build --if-present      
+      # - run: npm install
+      # - run: npm run build --if-present      
 
       # - name: Check generated manifest types
       #   run: pnpm gen:types:check
