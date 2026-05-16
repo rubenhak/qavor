@@ -1,21 +1,21 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { execa, type ResultPromise, type Options as ExecaOptions } from 'execa';
-import { ensureDir } from '../util/fs.js';
-import { RuntimeFailure, UserError } from '../util/exit-codes.js';
-import { runHooks } from '../util/hooks.js';
-import { composeServiceEnv, toEnvObject, assertNoIssues } from '../env/composer.js';
-import type { Logger } from '../util/logger.js';
+import { type Options as ExecaOptions, execa, type ResultPromise } from 'execa';
+import { assertNoIssues, composeServiceEnv, toEnvObject } from '../env/composer.js';
 import type { LoadedDocument } from '../manifest/loader.js';
 import type { ServiceManifest } from '../manifest/types/index.js';
+import { RuntimeFailure, UserError } from '../util/exit-codes.js';
+import { ensureDir } from '../util/fs.js';
+import { runHooks } from '../util/hooks.js';
+import type { Logger } from '../util/logger.js';
 import type { WorkspacePaths } from '../workspace/paths.js';
 import {
   clearState,
   isPidAlive,
   listSupervisorStates,
   readState,
-  writeState,
   type SupervisorState,
+  writeState,
 } from './state.js';
 
 export interface StartOptions {
@@ -150,7 +150,10 @@ export async function stopNativeService(opts: StopOptions): Promise<{ stopped: b
     return { stopped: false };
   }
   if (!isPidAlive(state.pid)) {
-    opts.logger.info({ service: opts.service, pid: state.pid }, 'down: process already gone; clearing state');
+    opts.logger.info(
+      { service: opts.service, pid: state.pid },
+      'down: process already gone; clearing state',
+    );
     await clearState(opts.paths, opts.service);
     return { stopped: true };
   }
@@ -252,7 +255,11 @@ export async function listServicesState(paths: WorkspacePaths): Promise<ListedSe
   const out: ListedService[] = [];
   for (const s of states) {
     const alive = isPidAlive(s.pid);
-    const status: ListedService['status'] = alive ? 'running' : s.status === 'running' ? 'crashed' : 'stopped';
+    const status: ListedService['status'] = alive
+      ? 'running'
+      : s.status === 'running'
+        ? 'crashed'
+        : 'stopped';
     const started = new Date(s.startedAt);
     const uptimeSec = alive ? Math.floor((Date.now() - started.getTime()) / 1000) : null;
     out.push({

@@ -28,7 +28,7 @@ export function rootOptions(cmd: Command): RootOptions {
  */
 export function inheritRootOptions(cmd: Command): RootOptions {
   let current: Command | null = cmd;
-  while (current && current.parent) current = current.parent;
+  while (current?.parent) current = current.parent;
   if (!current) return { json: false, verbose: false, jobs: undefined, config: undefined };
   return rootOptions(current);
 }

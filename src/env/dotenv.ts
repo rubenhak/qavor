@@ -38,7 +38,7 @@ export async function loadDotenvFile(file: string): Promise<DotenvEntry[]> {
       if (hash >= 0) value = value.slice(0, hash);
       value = value.trim();
     } else {
-      const quote = value[0]!;
+      const quote = value[0] as '"' | "'";
       const closing = value.lastIndexOf(quote);
       if (closing > 0) value = value.slice(1, closing);
     }

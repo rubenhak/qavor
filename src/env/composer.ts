@@ -1,7 +1,7 @@
 import path from 'node:path';
-import { ManifestError, UserError } from '../util/exit-codes.js';
-import type { EnvBlock, EnvMap, EnvSpec, ServiceManifest } from '../manifest/types/index.js';
 import type { LoadedDocument } from '../manifest/loader.js';
+import type { EnvMap, EnvSpec, ServiceManifest } from '../manifest/types/index.js';
+import { ManifestError, UserError } from '../util/exit-codes.js';
 import { loadDotenvFile } from './dotenv.js';
 
 export type RunMode = 'native' | 'docker';
@@ -74,12 +74,33 @@ export async function composeServiceEnv(input: ServiceCompositionInput): Promise
   const positionFor = input.serviceDoc.position;
 
   if (env?.common) {
-    pushEnvMap(layers, env.common, 'service.env.common', input.serviceDoc.file, positionFor, '/env/common');
+    pushEnvMap(
+      layers,
+      env.common,
+      'service.env.common',
+      input.serviceDoc.file,
+      positionFor,
+      '/env/common',
+    );
   }
   if (input.mode === 'native' && env?.native) {
-    pushEnvMap(layers, env.native, 'service.env.native', input.serviceDoc.file, positionFor, '/env/native');
+    pushEnvMap(
+      layers,
+      env.native,
+      'service.env.native',
+      input.serviceDoc.file,
+      positionFor,
+      '/env/native',
+    );
   } else if (input.mode === 'docker' && env?.docker) {
-    pushEnvMap(layers, env.docker, 'service.env.docker', input.serviceDoc.file, positionFor, '/env/docker');
+    pushEnvMap(
+      layers,
+      env.docker,
+      'service.env.docker',
+      input.serviceDoc.file,
+      positionFor,
+      '/env/docker',
+    );
   }
   // .env next to manifest
   const baseDotenv = await loadDotenvFile(path.join(manifestDir, '.env'));
@@ -94,7 +115,10 @@ export async function composeServiceEnv(input: ServiceCompositionInput): Promise
     });
   }
   // .env.<mode> next to manifest
-  const modeDotenvFile = path.join(manifestDir, input.mode === 'native' ? '.env.native' : '.env.docker');
+  const modeDotenvFile = path.join(
+    manifestDir,
+    input.mode === 'native' ? '.env.native' : '.env.docker',
+  );
   const modeDotenv = await loadDotenvFile(modeDotenvFile);
   for (const e of modeDotenv) {
     layers.push({
@@ -161,8 +185,8 @@ function pushEnvMap(
         typeof spec.value !== 'undefined'
           ? spec.value
           : typeof spec.default !== 'undefined'
-          ? spec.default
-          : undefined;
+            ? spec.default
+            : undefined;
       if (typeof concrete === 'undefined') {
         // Required envSpec with no value/default contributes a placeholder layer so
         // the resolver can flag the missing required at the end.
@@ -199,15 +223,16 @@ function pushEnvMap(
 
 function isEnvSpec(v: unknown): v is EnvSpec {
   return Boolean(
-    v && typeof v === 'object' && !Array.isArray(v) && (
-      'value' in (v as object) ||
-      'default' in (v as object) ||
-      'required' in (v as object) ||
-      'secret' in (v as object) ||
-      'type' in (v as object) ||
-      'pattern' in (v as object) ||
-      'description' in (v as object)
-    ),
+    v &&
+      typeof v === 'object' &&
+      !Array.isArray(v) &&
+      ('value' in (v as object) ||
+        'default' in (v as object) ||
+        'required' in (v as object) ||
+        'secret' in (v as object) ||
+        'type' in (v as object) ||
+        'pattern' in (v as object) ||
+        'description' in (v as object)),
   );
 }
 

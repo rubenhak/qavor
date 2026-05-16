@@ -24,7 +24,10 @@ export function stateFile(paths: WorkspacePaths, service: string): string {
   return path.join(paths.stateDir, `${service}.json`);
 }
 
-export async function readState(paths: WorkspacePaths, service: string): Promise<SupervisorState | null> {
+export async function readState(
+  paths: WorkspacePaths,
+  service: string,
+): Promise<SupervisorState | null> {
   const file = stateFile(paths, service);
   if (!(await pathExists(file))) return null;
   try {

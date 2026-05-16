@@ -10,9 +10,8 @@ export function resolveJobs(override?: number): number {
   if (typeof override === 'number' && Number.isFinite(override) && override >= 1) {
     return Math.floor(override);
   }
-  const avail = typeof os.availableParallelism === 'function'
-    ? os.availableParallelism()
-    : os.cpus().length;
+  const avail =
+    typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
   return Math.max(1, avail);
 }
 

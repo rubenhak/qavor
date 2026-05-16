@@ -1,9 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { isFile } from '../util/fs.js';
-import { workspacePaths, type WorkspacePaths } from './paths.js';
 import { loadManifestFile } from '../manifest/loader.js';
 import { UserError } from '../util/exit-codes.js';
+import { isFile } from '../util/fs.js';
+import { type WorkspacePaths, workspacePaths } from './paths.js';
 
 export interface ResolvedWorkspace {
   paths: WorkspacePaths;
@@ -54,7 +54,9 @@ export async function resolveWorkspace(start: string = process.cwd()): Promise<R
   const docs = await loadManifestFile(paths.workspacesFile);
   const workspaceDoc = docs.find((d) => d.kind === 'workspaces');
   if (!workspaceDoc) {
-    throw new UserError(`Workspace pointer at ${paths.workspacesFile} has no \`kind: workspaces\` document.`);
+    throw new UserError(
+      `Workspace pointer at ${paths.workspacesFile} has no \`kind: workspaces\` document.`,
+    );
   }
   const rootProjectPath = (workspaceDoc.data as { root_project_path?: unknown }).root_project_path;
   if (typeof rootProjectPath !== 'string' || rootProjectPath.length === 0) {

@@ -1,10 +1,10 @@
-import type { Command } from 'commander';
-import path from 'node:path';
 import fs from 'node:fs/promises';
-import { resolveWorkspace, readProjectManifest } from '../../workspace/locate.js';
-import { emit, emitJson } from '../../util/logger.js';
-import { inheritRootOptions } from '../options.js';
+import path from 'node:path';
+import type { Command } from 'commander';
 import { readJsonFile } from '../../util/fs.js';
+import { emit, emitJson } from '../../util/logger.js';
+import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
+import { inheritRootOptions } from '../options.js';
 
 export function registerWorkspace(program: Command): void {
   const ws = program.command('workspace').description('Workspace operations.');
@@ -36,12 +36,15 @@ export function registerWorkspace(program: Command): void {
       emit(`Workspace root:        ${info.workspace_root}`);
       emit(`Workspaces manifest:   ${path.relative(info.workspace_root, info.workspaces_file)}`);
       emit(`Project repo path:     ${path.relative(info.workspace_root, info.project_repo_path)}`);
-      emit(`Project manifest:      ${path.relative(info.workspace_root, info.project_manifest_file)}`);
+      emit(
+        `Project manifest:      ${path.relative(info.workspace_root, info.project_manifest_file)}`,
+      );
       emit(`Project name:          ${info.project_name ?? '<unknown>'}`);
       emit(`State directory:       ${path.relative(info.workspace_root, info.state_dir)}`);
       if (Object.keys(meta).length > 0) {
         emit('Workspace meta:');
-        for (const [k, v] of Object.entries(meta)) emit(`  ${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+        for (const [k, v] of Object.entries(meta))
+          emit(`  ${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
       }
       // Touch fs so tests using stat the meta file exit cleanly.
       try {

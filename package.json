@@ -26,8 +26,8 @@
     "qavor": "tsx src/index.ts",
     "gen:types": "tsx scripts/gen-types.ts",
     "gen:types:check": "tsx scripts/gen-types.ts --check",
-    "lint": "eslint .",
-    "format": "prettier --write .",
+    "lint": "biome check .",
+    "format": "biome check --write .",
     "test": "node --import tsx --test --test-reporter=spec test/**/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -46,6 +46,7 @@
     "yaml": "^2.7.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
     "@types/node": "^24.12.4",
     "json-schema-to-typescript": "^15.0.4",
     "tsup": "^8.3.5",

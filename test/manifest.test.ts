@@ -1,10 +1,10 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { makeTempDir, cleanup } from './helpers/fixtures.js';
+import { test } from 'node:test';
 import { loadManifestFile } from '../src/manifest/loader.js';
-import { validateDocument, isKnownKind } from '../src/manifest/validator.js';
+import { isKnownKind, validateDocument } from '../src/manifest/validator.js';
+import { cleanup, makeTempDir } from './helpers/fixtures.js';
 
 async function writeYaml(dir: string, name: string, content: string): Promise<string> {
   const file = path.join(dir, name);
@@ -48,8 +48,11 @@ test('validator: invalid project manifest reports file:line:column', async () =>
     assert.equal(res.ok, false);
     const nameIssue = res.issues.find((i) => i.path.endsWith('/name'));
     assert.ok(nameIssue, 'expected a /name issue');
-    assert.equal(nameIssue!.file, file);
-    assert.ok(nameIssue!.line >= 2, `line should point at the offending field, got ${nameIssue!.line}`);
+    assert.equal(nameIssue?.file, file);
+    assert.ok(
+      nameIssue?.line >= 2,
+      `line should point at the offending field, got ${nameIssue?.line}`,
+    );
   } finally {
     await cleanup(dir);
   }
@@ -98,9 +101,9 @@ test('loader: multi-document YAML returns one doc per kind', async () => {
     );
     const docs = await loadManifestFile(file);
     assert.equal(docs.length, 3);
-    assert.equal(docs[0]!.kind, 'repo');
-    assert.equal(docs[1]!.kind, 'service');
-    assert.equal(docs[2]!.kind, 'service');
+    assert.equal(docs[0]?.kind, 'repo');
+    assert.equal(docs[1]?.kind, 'service');
+    assert.equal(docs[2]?.kind, 'service');
     for (const d of docs) {
       assert.equal(validateDocument(d).ok, true, `doc ${d.docIndex} should be valid`);
     }

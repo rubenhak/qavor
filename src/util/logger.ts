@@ -48,12 +48,12 @@ export function getLogger(): Logger {
  * output (`status`, `ps`, `env`) renders without log decorations.
  */
 export function emit(text: string): void {
-  process.stdout.write(text + '\n');
+  process.stdout.write(`${text}\n`);
 }
 
 /**
  * JSON-mode output. Always one JSON object per line on stdout.
  */
 export function emitJson(payload: unknown): void {
-  process.stdout.write(JSON.stringify(payload) + '\n');
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
 }

@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { parseAllDocuments, type Document, type Node, type LineCounter } from 'yaml';
+import { type Document, type LineCounter, type Node, parseAllDocuments } from 'yaml';
 import { ManifestError } from '../util/exit-codes.js';
-import type { ManifestKind, QavorManifest } from './types/index.js';
+import type { ManifestKind } from './types/index.js';
 
 export interface SourcePosition {
   /** Absolute file path of the manifest. */
@@ -67,7 +67,8 @@ export async function loadManifestFile(
   let idx = 0;
   for (const doc of docs) {
     if (doc.errors.length && opts.throwOnParseError !== false) {
-      const e = doc.errors[0]!;
+      const e = doc.errors[0];
+      if (!e) continue;
       const pos = errorPosition(absFile, source, e);
       throw new ManifestError(
         `${pos.file}:${pos.line}:${pos.column}: YAML parse error: ${e.message}`,
@@ -114,11 +115,7 @@ function offsetToLineCol(source: string, offset: number): { line: number; col: n
  * The yaml library exposes node ranges via `getIn([...], true)`; we use
  * those ranges and convert offset → line/col with a one-time scan.
  */
-function makePositionResolver(
-  file: string,
-  source: string,
-  doc: Document,
-): PositionResolver {
+function makePositionResolver(file: string, source: string, doc: Document): PositionResolver {
   return (jsonPath: string): SourcePosition => {
     const keys = parseJsonPointer(jsonPath);
     let node: Node | null | undefined;

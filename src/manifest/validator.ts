@@ -1,12 +1,12 @@
 import Ajv2020, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import defsSchema from '../schema/qavor.defs.schema.json' with { type: 'json' };
-import workspacesSchema from '../schema/qavor.workspaces.schema.json' with { type: 'json' };
+import profileSchema from '../schema/qavor.profile.schema.json' with { type: 'json' };
 import projectSchema from '../schema/qavor.project.schema.json' with { type: 'json' };
 import repoSchema from '../schema/qavor.repo.schema.json' with { type: 'json' };
 import serviceSchema from '../schema/qavor.service.schema.json' with { type: 'json' };
 import statefulSchema from '../schema/qavor.stateful.schema.json' with { type: 'json' };
-import profileSchema from '../schema/qavor.profile.schema.json' with { type: 'json' };
+import workspacesSchema from '../schema/qavor.workspaces.schema.json' with { type: 'json' };
 import type { LoadedDocument } from './loader.js';
 import type { ManifestKind } from './types/index.js';
 
@@ -126,16 +126,32 @@ function formatAjvError(doc: LoadedDocument, err: ErrorObject): ValidationIssue 
   const pos = doc.position(instancePath);
   const where = instancePath || '<root>';
   let message = err.message ?? 'invalid';
-  if (err.keyword === 'additionalProperties' && err.params && typeof (err.params as { additionalProperty?: string }).additionalProperty === 'string') {
+  if (
+    err.keyword === 'additionalProperties' &&
+    err.params &&
+    typeof (err.params as { additionalProperty?: string }).additionalProperty === 'string'
+  ) {
     const extra = (err.params as { additionalProperty: string }).additionalProperty;
     message = `Unexpected property '${extra}'`;
-  } else if (err.keyword === 'required' && err.params && typeof (err.params as { missingProperty?: string }).missingProperty === 'string') {
+  } else if (
+    err.keyword === 'required' &&
+    err.params &&
+    typeof (err.params as { missingProperty?: string }).missingProperty === 'string'
+  ) {
     const missing = (err.params as { missingProperty: string }).missingProperty;
     message = `Missing required property '${missing}'`;
-  } else if (err.keyword === 'enum' && err.params && Array.isArray((err.params as { allowedValues?: unknown[] }).allowedValues)) {
+  } else if (
+    err.keyword === 'enum' &&
+    err.params &&
+    Array.isArray((err.params as { allowedValues?: unknown[] }).allowedValues)
+  ) {
     const allowed = (err.params as { allowedValues: unknown[] }).allowedValues;
     message = `${message}: ${allowed.map((v) => JSON.stringify(v)).join(', ')}`;
-  } else if (err.keyword === 'pattern' && err.params && typeof (err.params as { pattern?: string }).pattern === 'string') {
+  } else if (
+    err.keyword === 'pattern' &&
+    err.params &&
+    typeof (err.params as { pattern?: string }).pattern === 'string'
+  ) {
     message = `Value does not match pattern /${(err.params as { pattern: string }).pattern}/`;
   }
   return {

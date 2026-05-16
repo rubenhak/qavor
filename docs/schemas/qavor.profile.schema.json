@@ -8,7 +8,9 @@
   "required": ["kind", "name"],
   "properties": {
     "kind": { "const": "profile" },
-    "schemaVersion": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/schemaVersion" },
+    "schemaVersion": {
+      "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/schemaVersion"
+    },
     "name": {
       "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name",
       "description": "Profile identifier. Referenced from `profiles:` lists and from CLI flags."

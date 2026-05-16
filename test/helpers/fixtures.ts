@@ -50,10 +50,12 @@ export interface FixtureRepos {
   serviceRepos: Record<string, string>;
 }
 
-export async function buildFixtureRepos(opts: {
-  /** Filter set of services to include (default all). */
-  services?: string[];
-} = {}): Promise<FixtureRepos> {
+export async function buildFixtureRepos(
+  opts: {
+    /** Filter set of services to include (default all). */
+    services?: string[];
+  } = {},
+): Promise<FixtureRepos> {
   const base = await makeTempDir('qavor-srcrepos-');
   const allServices = ['web', 'auth', 'notes'];
   const wanted = opts.services ?? allServices;
@@ -67,7 +69,9 @@ export async function buildFixtureRepos(opts: {
   // clones are hermetic (no network, no missing root_url).
   const projectRepo = path.join(base, 'project-repo.git');
   await makeGitRepo(projectRepo, 'project-repo');
-  const repos = wanted.map((name) => `  - name: ${name}\n    url: ${fileUrl(serviceRepos[name]!)}`).join('\n');
+  const repos = wanted
+    .map((name) => `  - name: ${name}\n    url: ${fileUrl(serviceRepos[name]!)}`)
+    .join('\n');
   const yaml = `kind: project\nname: acme-platform\ngit:\n  default_branch: main\nrepositories:\n${repos}\n`;
   await fs.writeFile(path.join(projectRepo, 'qavor.yaml'), yaml);
   await execa('git', ['add', '-A'], { cwd: projectRepo });
@@ -76,30 +80,31 @@ export async function buildFixtureRepos(opts: {
 }
 
 export function fileUrl(absPath: string): string {
-  return 'file://' + absPath;
+  return `file://${absPath}`;
 }
 
 /**
  * Run the qavor CLI in-process via tsx. Returns stdout/stderr/exit.
  */
-export async function runCli(args: string[], opts: { cwd: string; env?: Record<string, string> } = { cwd: process.cwd() }): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+export async function runCli(
+  args: string[],
+  opts: { cwd: string; env?: Record<string, string> } = { cwd: process.cwd() },
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const entry = path.join(repoRoot, 'src', 'index.ts');
   const tsxLoader = path.join(repoRoot, 'node_modules', 'tsx', 'dist', 'loader.mjs');
-  const tsxLoaderUrl = 'file://' + tsxLoader;
+  const tsxLoaderUrl = `file://${tsxLoader}`;
   const baseEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (typeof v === 'string') baseEnv[k] = v;
   const env = { ...baseEnv, ...(opts.env ?? {}) };
-  const res = await execa(process.execPath, [
-    '--no-warnings',
-    '--import',
-    tsxLoaderUrl,
-    entry,
-    ...args,
-  ], {
-    cwd: opts.cwd,
-    env,
-    reject: false,
-  });
+  const res = await execa(
+    process.execPath,
+    ['--no-warnings', '--import', tsxLoaderUrl, entry, ...args],
+    {
+      cwd: opts.cwd,
+      env,
+      reject: false,
+    },
+  );
   const stdout = typeof res.stdout === 'string' ? res.stdout : '';
   const stderr = typeof res.stderr === 'string' ? res.stderr : '';
   return { stdout, stderr, exitCode: res.exitCode ?? -1 };

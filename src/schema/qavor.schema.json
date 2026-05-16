@@ -13,27 +13,27 @@
   },
   "allOf": [
     {
-      "if":   { "properties": { "kind": { "const": "workspaces" } }, "required": ["kind"] },
+      "if": { "properties": { "kind": { "const": "workspaces" } }, "required": ["kind"] },
       "then": { "$ref": "https://qavor.dev/schemas/qavor.workspaces.schema.json" }
     },
     {
-      "if":   { "properties": { "kind": { "const": "project" } }, "required": ["kind"] },
+      "if": { "properties": { "kind": { "const": "project" } }, "required": ["kind"] },
       "then": { "$ref": "https://qavor.dev/schemas/qavor.project.schema.json" }
     },
     {
-      "if":   { "properties": { "kind": { "const": "repo" } }, "required": ["kind"] },
+      "if": { "properties": { "kind": { "const": "repo" } }, "required": ["kind"] },
       "then": { "$ref": "https://qavor.dev/schemas/qavor.repo.schema.json" }
     },
     {
-      "if":   { "properties": { "kind": { "const": "service" } }, "required": ["kind"] },
+      "if": { "properties": { "kind": { "const": "service" } }, "required": ["kind"] },
       "then": { "$ref": "https://qavor.dev/schemas/qavor.service.schema.json" }
     },
     {
-      "if":   { "properties": { "kind": { "const": "stateful" } }, "required": ["kind"] },
+      "if": { "properties": { "kind": { "const": "stateful" } }, "required": ["kind"] },
       "then": { "$ref": "https://qavor.dev/schemas/qavor.stateful.schema.json" }
     },
     {
-      "if":   { "properties": { "kind": { "const": "profile" } }, "required": ["kind"] },
+      "if": { "properties": { "kind": { "const": "profile" } }, "required": ["kind"] },
       "then": { "$ref": "https://qavor.dev/schemas/qavor.profile.schema.json" }
     }
   ]

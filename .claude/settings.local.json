@@ -2,9 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(git push *)",
-      "Bash(gh run *)",
-      "Bash(git ls-remote *)",
-      "Bash(gh api *)"
+      "Bash(pnpm add *)",
+      "Bash(pnpm biome *)",
+      "Bash(pnpm lint *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(pnpm gen:types:check)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm test *)",
+      "Bash(bash ./lint.sh)",
+      "Bash(git add *)"
     ]
   }
 }

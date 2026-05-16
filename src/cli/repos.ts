@@ -16,9 +16,7 @@ export function selectRepos(all: ResolvedRepo[], selector?: string[]): ResolvedR
     }
   }
   if (set.size > 0) {
-    throw new Error(
-      `Unknown repo${set.size > 1 ? 's' : ''}: ${[...set].join(', ')}`,
-    );
+    throw new Error(`Unknown repo${set.size > 1 ? 's' : ''}: ${[...set].join(', ')}`);
   }
   return out;
 }

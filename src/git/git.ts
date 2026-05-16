@@ -1,6 +1,6 @@
-import { execa, type ExecaError, type ResultPromise } from 'execa';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { type ExecaError, execa, type ResultPromise } from 'execa';
 import simpleGit, { type SimpleGit } from 'simple-git';
 import { RuntimeFailure } from '../util/exit-codes.js';
 import { isDirectory } from '../util/fs.js';
@@ -78,8 +78,13 @@ export async function readRepoStatus(dir: string): Promise<RepoStatus> {
   let ahead = 0;
   let behind = 0;
   try {
-    const counts = await runGit(['rev-list', '--left-right', '--count', '@{u}...HEAD'], { cwd: dir });
-    const [b, a] = counts.trim().split(/\s+/).map((n) => Number.parseInt(n, 10));
+    const counts = await runGit(['rev-list', '--left-right', '--count', '@{u}...HEAD'], {
+      cwd: dir,
+    });
+    const [b, a] = counts
+      .trim()
+      .split(/\s+/)
+      .map((n) => Number.parseInt(n, 10));
     behind = Number.isFinite(b) ? (b ?? 0) : 0;
     ahead = Number.isFinite(a) ? (a ?? 0) : 0;
   } catch {

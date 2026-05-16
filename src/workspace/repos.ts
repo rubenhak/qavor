@@ -1,6 +1,6 @@
 import path from 'node:path';
-import type { ProjectManifest, ProjectRepoEntry } from '../manifest/types/index.js';
 import { deriveCloneUrl } from '../git/git.js';
+import type { ProjectManifest, ProjectRepoEntry } from '../manifest/types/index.js';
 import { ManifestError } from '../util/exit-codes.js';
 
 export interface ResolvedRepo {
@@ -35,7 +35,7 @@ export function resolveRepos(opts: ResolveOpts): ResolvedRepo[] {
   const repos: ResolvedRepo[] = [];
   const seen = new Set<string>();
   for (const entry of list) {
-    const normalized = typeof entry === 'string' ? { name: entry } as ProjectRepoEntry : entry;
+    const normalized = typeof entry === 'string' ? ({ name: entry } as ProjectRepoEntry) : entry;
     const name = normalized.name;
     if (!name) throw new ManifestError(`Project repository entry is missing a name.`);
     if (seen.has(name)) {

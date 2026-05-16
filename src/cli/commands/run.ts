@@ -1,23 +1,26 @@
+import path from 'node:path';
 import type { Command } from 'commander';
-import { resolveWorkspace, readProjectManifest } from '../../workspace/locate.js';
-import { resolveRepos } from '../../workspace/repos.js';
-import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
-import { emit, emitJson, getLogger } from '../../util/logger.js';
-import { inheritRootOptions } from '../options.js';
 import { parseCliEnv } from '../../env/composer.js';
+import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
+import { type LoadedDocument, loadManifestFile } from '../../manifest/loader.js';
+import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
+import { tailFile } from '../../supervisor/logs.js';
 import {
+  listServicesState,
   startNativeService,
   stopNativeService,
-  listServicesState,
 } from '../../supervisor/native.js';
-import { loadManifestFile, type LoadedDocument } from '../../manifest/loader.js';
-import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
-import { UserError } from '../../util/exit-codes.js';
 import { resolveJobs } from '../../util/concurrency.js';
-import { tailFile } from '../../supervisor/logs.js';
-import path from 'node:path';
+import { UserError } from '../../util/exit-codes.js';
+import { emit, emitJson, getLogger } from '../../util/logger.js';
+import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
+import { resolveRepos } from '../../workspace/repos.js';
+import { inheritRootOptions } from '../options.js';
 
-async function findService(name: string, jobs: number): Promise<{
+async function findService(
+  name: string,
+  jobs: number,
+): Promise<{
   serviceDoc: LoadedDocument;
   service: ServiceManifest;
   paths: ReturnType<typeof import('../../workspace/paths.js').workspacePaths>;
@@ -155,7 +158,9 @@ export function registerRunCommands(program: Command): void {
         s.uptimeSec !== null ? `${s.uptimeSec}s` : '-',
         s.logFile ?? '-',
       ]);
-      const widths = headers.map((h, i) => Math.max(h.length, ...data.map((row) => (row[i] ?? '').length)));
+      const widths = headers.map((h, i) =>
+        Math.max(h.length, ...data.map((row) => (row[i] ?? '').length)),
+      );
       const fmt = (row: string[]): string => row.map((c, i) => c.padEnd(widths[i] ?? 0)).join('  ');
       emit(fmt(headers));
       for (const row of data) emit(fmt(row));

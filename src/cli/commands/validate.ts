@@ -1,20 +1,23 @@
-import type { Command } from 'commander';
-import path from 'node:path';
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import type { Command } from 'commander';
 import pMap from 'p-map';
-import { isDirectory, isFile } from '../../util/fs.js';
 import { loadManifestFile } from '../../manifest/loader.js';
-import { validateDocument, formatIssue, type ValidationIssue } from '../../manifest/validator.js';
+import { formatIssue, type ValidationIssue, validateDocument } from '../../manifest/validator.js';
+import { resolveJobs } from '../../util/concurrency.js';
+import { ManifestError, UserError } from '../../util/exit-codes.js';
+import { isDirectory, isFile } from '../../util/fs.js';
 import { emit, emitJson, getLogger } from '../../util/logger.js';
 import { inheritRootOptions } from '../options.js';
-import { ManifestError, UserError } from '../../util/exit-codes.js';
-import { resolveJobs } from '../../util/concurrency.js';
 
 export function registerValidate(program: Command): void {
   program
     .command('validate')
     .description('Validate one or more qavor manifest files. Targets a file or a directory.')
-    .argument('<path>', 'Path to a qavor.yaml file, a directory containing one, or a directory of multiple manifests.')
+    .argument(
+      '<path>',
+      'Path to a qavor.yaml file, a directory containing one, or a directory of multiple manifests.',
+    )
     .action(async (target: string, _opts: unknown, cmd: Command) => {
       const root = inheritRootOptions(cmd);
       const logger = getLogger();

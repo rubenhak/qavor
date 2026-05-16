@@ -23,11 +23,11 @@ const outputPath = path.join(repoRoot, 'src', 'manifest', 'types', 'generated.ts
 
 const KINDS = [
   { id: 'Workspaces', file: 'qavor.workspaces.schema.json' },
-  { id: 'Project',    file: 'qavor.project.schema.json' },
-  { id: 'Repo',       file: 'qavor.repo.schema.json' },
-  { id: 'Service',    file: 'qavor.service.schema.json' },
-  { id: 'Stateful',   file: 'qavor.stateful.schema.json' },
-  { id: 'Profile',    file: 'qavor.profile.schema.json' },
+  { id: 'Project', file: 'qavor.project.schema.json' },
+  { id: 'Repo', file: 'qavor.repo.schema.json' },
+  { id: 'Service', file: 'qavor.service.schema.json' },
+  { id: 'Stateful', file: 'qavor.stateful.schema.json' },
+  { id: 'Profile', file: 'qavor.profile.schema.json' },
 ] as const;
 
 interface RawSchema {
@@ -54,10 +54,12 @@ function rewriteRefs(node: unknown, mapping: Map<string, string>): unknown {
     // creates duplicate types for ref-with-description-sibling otherwise.
     if (typeof obj.$ref === 'string') {
       const ref = obj.$ref;
-      const remapped = mapping.get(ref) ?? ref.replace(
-        /^https:\/\/qavor\.dev\/schemas\/qavor\.defs\.schema\.json#\/\$defs\//,
-        '#/$defs/',
-      );
+      const remapped =
+        mapping.get(ref) ??
+        ref.replace(
+          /^https:\/\/qavor\.dev\/schemas\/qavor\.defs\.schema\.json#\/\$defs\//,
+          '#/$defs/',
+        );
       return { $ref: remapped };
     }
     const out: Record<string, unknown> = {};
@@ -133,7 +135,7 @@ async function main(): Promise<void> {
     '',
   ].join('\n');
 
-  const out = header + generated.trimEnd() + '\n';
+  const out = `${header + generated.trimEnd()}\n`;
 
   if (checkMode) {
     let existing = '';

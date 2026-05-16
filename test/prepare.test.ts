@@ -1,8 +1,8 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { buildFixtureRepos, makeTempDir, cleanup, runCli } from './helpers/fixtures.js';
+import { test } from 'node:test';
+import { buildFixtureRepos, cleanup, makeTempDir, runCli } from './helpers/fixtures.js';
 
 test('qavor prepare: runs prepare cmd; --force re-runs even on cache hit', async () => {
   const fixtures = await buildFixtureRepos({ services: ['web', 'auth'] });
@@ -26,7 +26,9 @@ test('qavor prepare: runs prepare cmd; --force re-runs even on cache hit', async
     const third = await runCli(['prepare', '--json', '--force'], { cwd: ws });
     const thirdParsed = JSON.parse(third.stdout);
     assert.ok(
-      thirdParsed.results.every((r: { status: string }) => r.status === 'ok' || r.status === 'no-prepare-cmd'),
+      thirdParsed.results.every(
+        (r: { status: string }) => r.status === 'ok' || r.status === 'no-prepare-cmd',
+      ),
       `--force should invalidate cache; got ${JSON.stringify(thirdParsed.results)}`,
     );
 

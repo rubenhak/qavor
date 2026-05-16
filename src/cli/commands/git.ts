@@ -1,24 +1,23 @@
-import type { Command } from 'commander';
 import path from 'node:path';
+import type { Command } from 'commander';
 import pMap from 'p-map';
-import { resolveWorkspace } from '../../workspace/locate.js';
-import { readProjectManifest } from '../../workspace/locate.js';
-import { resolveRepos, type ResolvedRepo } from '../../workspace/repos.js';
-import { selectRepos, reposPresent } from '../repos.js';
 import {
   gitClone,
+  gitCommit,
   gitFetch,
   gitPullFastForward,
-  gitCommit,
   gitPush,
   isGitRepo,
   readRepoStatus,
 } from '../../git/git.js';
-import { emit, emitJson, getLogger } from '../../util/logger.js';
-import { inheritRootOptions } from '../options.js';
-import { resolveJobs } from '../../util/concurrency.js';
-import { UserError, RuntimeFailure } from '../../util/exit-codes.js';
 import type { ProjectManifest } from '../../manifest/types/index.js';
+import { resolveJobs } from '../../util/concurrency.js';
+import { RuntimeFailure, UserError } from '../../util/exit-codes.js';
+import { emit, emitJson, getLogger } from '../../util/logger.js';
+import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
+import { type ResolvedRepo, resolveRepos } from '../../workspace/repos.js';
+import { inheritRootOptions } from '../options.js';
+import { reposPresent, selectRepos } from '../repos.js';
 
 async function loadProjectRepos(): Promise<{ workspaceRoot: string; repos: ResolvedRepo[] }> {
   const ws = await resolveWorkspace();
@@ -37,9 +36,7 @@ function repoOption(c: Command): Command {
 
 export function registerGitCommands(program: Command): void {
   repoOption(
-    program
-      .command('clone')
-      .description('Clone every repo enumerated in the project manifest.'),
+    program.command('clone').description('Clone every repo enumerated in the project manifest.'),
   ).action(async (opts: { repo?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const logger = getLogger();
@@ -47,12 +44,20 @@ export function registerGitCommands(program: Command): void {
     const selected = selectRepos(repos, opts.repo);
     const jobs = resolveJobs(root.jobs);
 
-    const results: { repo: string; status: 'cloned' | 'present' | 'skipped' | 'failed'; message?: string }[] = [];
+    const results: {
+      repo: string;
+      status: 'cloned' | 'present' | 'skipped' | 'failed';
+      message?: string;
+    }[] = [];
     await pMap(
       selected,
       async (r) => {
         if (r.isProjectRepo) {
-          results.push({ repo: r.name, status: 'present', message: 'project repo (already cloned)' });
+          results.push({
+            repo: r.name,
+            status: 'present',
+            message: 'project repo (already cloned)',
+          });
           return;
         }
         if (await isGitRepo(r.dir)) {
@@ -89,7 +94,7 @@ export function registerGitCommands(program: Command): void {
       return;
     }
     for (const r of results) {
-      emit(`${r.status.padEnd(8)} ${r.repo}${r.message ? '  — ' + r.message : ''}`);
+      emit(`${r.status.padEnd(8)} ${r.repo}${r.message ? `  — ${r.message}` : ''}`);
     }
   });
 
@@ -111,7 +116,11 @@ export function registerGitCommands(program: Command): void {
           await gitPullFastForward(r.dir);
           results.push({ repo: r.name, ok: true });
         } catch (err) {
-          results.push({ repo: r.name, ok: false, error: err instanceof Error ? err.message : String(err) });
+          results.push({
+            repo: r.name,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       },
       { concurrency: jobs },
@@ -120,14 +129,13 @@ export function registerGitCommands(program: Command): void {
       emitJson({ results });
       return;
     }
-    for (const r of results) emit(`${r.ok ? 'ok  ' : 'fail'} ${r.repo}${r.error ? '  — ' + r.error : ''}`);
+    for (const r of results)
+      emit(`${r.ok ? 'ok  ' : 'fail'} ${r.repo}${r.error ? `  — ${r.error}` : ''}`);
     if (results.some((r) => !r.ok)) throw new RuntimeFailure('Some repos failed to sync.');
   });
 
   repoOption(
-    program
-      .command('status')
-      .description('Aggregated repo status across selected repos.'),
+    program.command('status').description('Aggregated repo status across selected repos.'),
   ).action(async (opts: { repo?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const { workspaceRoot, repos } = await loadProjectRepos();
@@ -201,10 +209,16 @@ export function registerGitCommands(program: Command): void {
         selected,
         async (r) => {
           try {
-            const res = await gitCommit(r.dir, opts.message, { allowEmpty: Boolean(opts.allowEmpty) });
+            const res = await gitCommit(r.dir, opts.message, {
+              allowEmpty: Boolean(opts.allowEmpty),
+            });
             results.push({ repo: r.name, committed: res.committed });
           } catch (err) {
-            results.push({ repo: r.name, committed: false, error: err instanceof Error ? err.message : String(err) });
+            results.push({
+              repo: r.name,
+              committed: false,
+              error: err instanceof Error ? err.message : String(err),
+            });
           }
         },
         { concurrency: jobs },
@@ -215,16 +229,14 @@ export function registerGitCommands(program: Command): void {
       }
       for (const r of results) {
         const verb = r.committed ? 'committed' : r.error ? 'failed' : 'skipped';
-        emit(`${verb.padEnd(10)} ${r.repo}${r.error ? '  — ' + r.error : ''}`);
+        emit(`${verb.padEnd(10)} ${r.repo}${r.error ? `  — ${r.error}` : ''}`);
       }
       if (results.some((r) => r.error)) throw new RuntimeFailure('Some commits failed.');
     },
   );
 
   repoOption(
-    program
-      .command('push')
-      .description('git push the current branch across selected repos.'),
+    program.command('push').description('git push the current branch across selected repos.'),
   ).action(async (opts: { repo?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const { repos } = await loadProjectRepos();
@@ -238,7 +250,11 @@ export function registerGitCommands(program: Command): void {
           await gitPush(r.dir);
           results.push({ repo: r.name, ok: true });
         } catch (err) {
-          results.push({ repo: r.name, ok: false, error: err instanceof Error ? err.message : String(err) });
+          results.push({
+            repo: r.name,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       },
       { concurrency: jobs },
@@ -247,7 +263,8 @@ export function registerGitCommands(program: Command): void {
       emitJson({ results });
       return;
     }
-    for (const r of results) emit(`${r.ok ? 'ok  ' : 'fail'} ${r.repo}${r.error ? '  — ' + r.error : ''}`);
+    for (const r of results)
+      emit(`${r.ok ? 'ok  ' : 'fail'} ${r.repo}${r.error ? `  — ${r.error}` : ''}`);
     if (results.some((r) => !r.ok)) throw new RuntimeFailure('Some pushes failed.');
   });
 

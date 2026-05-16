@@ -41,7 +41,7 @@ export async function readJsonFile<T = unknown>(target: string): Promise<T> {
 
 export async function writeJsonFile(target: string, value: unknown): Promise<void> {
   await ensureDir(path.dirname(target));
-  await fs.writeFile(target, JSON.stringify(value, null, 2) + '\n', 'utf8');
+  await fs.writeFile(target, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
 /**

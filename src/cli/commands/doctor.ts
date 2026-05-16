@@ -1,17 +1,17 @@
-import type { Command } from 'commander';
-import path from 'node:path';
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import type { Command } from 'commander';
 import { execa } from 'execa';
-import { resolveWorkspace, readProjectManifest } from '../../workspace/locate.js';
-import { resolveRepos } from '../../workspace/repos.js';
 import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
-import { emit, emitJson, getLogger } from '../../util/logger.js';
-import { inheritRootOptions } from '../options.js';
-import { resolveJobs } from '../../util/concurrency.js';
-import { ensureDir, globalCacheDir } from '../../util/fs.js';
-import { loadManifestFile, type LoadedDocument } from '../../manifest/loader.js';
+import { type LoadedDocument, loadManifestFile } from '../../manifest/loader.js';
 import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
+import { resolveJobs } from '../../util/concurrency.js';
 import { RuntimeFailure } from '../../util/exit-codes.js';
+import { ensureDir, globalCacheDir } from '../../util/fs.js';
+import { emit, emitJson, getLogger } from '../../util/logger.js';
+import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
+import { resolveRepos } from '../../workspace/repos.js';
+import { inheritRootOptions } from '../options.js';
 
 interface Check {
   name: string;
@@ -32,7 +32,9 @@ async function runShell(cmd: string, cwd: string): Promise<{ ok: boolean; exitCo
 export function registerDoctor(program: Command): void {
   program
     .command('doctor')
-    .description('Verify toolchain prerequisites, workspace paths, and per-service check_installed steps.')
+    .description(
+      'Verify toolchain prerequisites, workspace paths, and per-service check_installed steps.',
+    )
     .action(async (_opts: unknown, cmd: Command) => {
       const root = inheritRootOptions(cmd);
       const logger = getLogger();
@@ -43,13 +45,22 @@ export function registerDoctor(program: Command): void {
         const res = await execa('git', ['--version']);
         const version = res.stdout.trim().replace(/^git version /, '');
         const [maj, min] = version.split('.').map((s) => Number.parseInt(s, 10));
-        if (Number.isFinite(maj) && Number.isFinite(min) && ((maj ?? 0) > 2 || ((maj ?? 0) === 2 && (min ?? 0) >= 30))) {
+        if (
+          Number.isFinite(maj) &&
+          Number.isFinite(min) &&
+          ((maj ?? 0) > 2 || ((maj ?? 0) === 2 && (min ?? 0) >= 30))
+        ) {
           checks.push({ name: 'git ≥ 2.30', status: 'ok', message: version });
         } else {
           checks.push({ name: 'git ≥ 2.30', status: 'warn', message: `found ${version}` });
         }
       } catch {
-        checks.push({ name: 'git ≥ 2.30', status: 'fail', message: 'git not found', hint: 'Install git.' });
+        checks.push({
+          name: 'git ≥ 2.30',
+          status: 'fail',
+          message: 'git not found',
+          hint: 'Install git.',
+        });
       }
 
       // docker (warn only at v0)
@@ -57,7 +68,11 @@ export function registerDoctor(program: Command): void {
         await execa('docker', ['--version']);
         checks.push({ name: 'docker (optional v0)', status: 'ok' });
       } catch {
-        checks.push({ name: 'docker (optional v0)', status: 'warn', message: 'docker not detected' });
+        checks.push({
+          name: 'docker (optional v0)',
+          status: 'warn',
+          message: 'docker not detected',
+        });
       }
 
       // Workspace + state dirs writable
@@ -67,7 +82,11 @@ export function registerDoctor(program: Command): void {
         const probe = path.join(ws.paths.stateRoot, '.doctor-write-check');
         await fs.writeFile(probe, '');
         await fs.unlink(probe);
-        checks.push({ name: 'workspace .qavor/ writable', status: 'ok', message: ws.paths.stateRoot });
+        checks.push({
+          name: 'workspace .qavor/ writable',
+          status: 'ok',
+          message: ws.paths.stateRoot,
+        });
       } catch (err) {
         checks.push({
           name: 'workspace .qavor/ writable',
@@ -141,7 +160,10 @@ export function registerDoctor(program: Command): void {
         }
       } catch (err) {
         // doctor still emits other checks even if not in a workspace
-        logger.debug({ err: err instanceof Error ? err.message : String(err) }, 'doctor: workspace probe failed');
+        logger.debug(
+          { err: err instanceof Error ? err.message : String(err) },
+          'doctor: workspace probe failed',
+        );
       }
 
       if (root.json) {

@@ -17,23 +17,22 @@
     },
     "envScalar": {
       "description": "Scalar value usable on the right-hand side of an env entry. Strings support ${VAR} and ${secret:NAME} interpolation.",
-      "oneOf": [
-        { "type": "string" },
-        { "type": "number" },
-        { "type": "boolean" }
-      ]
+      "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }]
     },
     "envSpec": {
       "description": "Long-form env entry. Use when you need typing, validation, default vs override, secret marking, or documentation.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "value":       { "$ref": "#/$defs/envScalar" },
-        "default":     { "$ref": "#/$defs/envScalar" },
-        "required":    { "type": "boolean", "default": false },
-        "type":        { "type": "string", "enum": ["string", "int", "number", "bool", "url", "duration"] },
-        "pattern":     { "type": "string", "format": "regex" },
-        "secret":      { "type": "boolean", "default": false },
+        "value": { "$ref": "#/$defs/envScalar" },
+        "default": { "$ref": "#/$defs/envScalar" },
+        "required": { "type": "boolean", "default": false },
+        "type": {
+          "type": "string",
+          "enum": ["string", "int", "number", "bool", "url", "duration"]
+        },
+        "pattern": { "type": "string", "format": "regex" },
+        "secret": { "type": "boolean", "default": false },
         "description": { "type": "string" }
       }
     },
@@ -42,10 +41,7 @@
       "type": "object",
       "patternProperties": {
         "^[A-Z_][A-Z0-9_]*$": {
-          "oneOf": [
-            { "$ref": "#/$defs/envScalar" },
-            { "$ref": "#/$defs/envSpec" }
-          ]
+          "oneOf": [{ "$ref": "#/$defs/envScalar" }, { "$ref": "#/$defs/envSpec" }]
         }
       },
       "additionalProperties": false
@@ -65,9 +61,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "common":  { "$ref": "#/$defs/envMap" },
-        "native":  { "$ref": "#/$defs/envMap" },
-        "docker":  { "$ref": "#/$defs/envMap" },
+        "common": { "$ref": "#/$defs/envMap" },
+        "native": { "$ref": "#/$defs/envMap" },
+        "docker": { "$ref": "#/$defs/envMap" },
         "publish": { "$ref": "#/$defs/envMap" }
       }
     },
@@ -77,10 +73,19 @@
       "additionalProperties": false,
       "required": ["cmd"],
       "properties": {
-        "cmd":  { "type": "string", "description": "Shell command. Multiline strings are treated as a script." },
-        "cwd":  { "type": "string", "description": "Working directory relative to the manifest file." },
-        "env":  { "$ref": "#/$defs/envMap" },
-        "shell":{ "type": "string", "description": "Override shell. Defaults to `/bin/sh -c` (POSIX) or `cmd /C` on Windows." }
+        "cmd": {
+          "type": "string",
+          "description": "Shell command. Multiline strings are treated as a script."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory relative to the manifest file."
+        },
+        "env": { "$ref": "#/$defs/envMap" },
+        "shell": {
+          "type": "string",
+          "description": "Override shell. Defaults to `/bin/sh -c` (POSIX) or `cmd /C` on Windows."
+        }
       }
     },
     "runtimeBackend": {
@@ -88,11 +93,11 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled":          { "type": "boolean", "default": false },
-        "check_installed":  { "$ref": "#/$defs/runtimeStep" },
-        "install":          { "$ref": "#/$defs/runtimeStep" },
-        "prepare":          { "$ref": "#/$defs/runtimeStep" },
-        "run":              { "$ref": "#/$defs/runtimeStep" }
+        "enabled": { "type": "boolean", "default": false },
+        "check_installed": { "$ref": "#/$defs/runtimeStep" },
+        "install": { "$ref": "#/$defs/runtimeStep" },
+        "prepare": { "$ref": "#/$defs/runtimeStep" },
+        "run": { "$ref": "#/$defs/runtimeStep" }
       }
     },
     "runtimeBlock": {
@@ -100,8 +105,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "native":         { "$ref": "#/$defs/runtimeBackend" },
-        "docker":         { "$ref": "#/$defs/runtimeBackend" },
+        "native": { "$ref": "#/$defs/runtimeBackend" },
+        "docker": { "$ref": "#/$defs/runtimeBackend" },
         "docker-compose": { "$ref": "#/$defs/runtimeBackend" }
       }
     },
@@ -119,9 +124,12 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "service":  { "type": "string", "description": "Service reference. `<service>` for same-workspace, `<repo>:<service>` permitted." },
+        "service": {
+          "type": "string",
+          "description": "Service reference. `<service>` for same-workspace, `<repo>:<service>` permitted."
+        },
         "stateful": { "$ref": "#/$defs/name" },
-        "group":    { "$ref": "#/$defs/name" },
+        "group": { "$ref": "#/$defs/name" },
         "optional": { "type": "boolean", "default": false },
         "condition": {
           "type": "string",
@@ -152,14 +160,14 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "pre_clone":   { "$ref": "#/$defs/hookCommands" },
-        "post_clone":  { "$ref": "#/$defs/hookCommands" },
+        "pre_clone": { "$ref": "#/$defs/hookCommands" },
+        "post_clone": { "$ref": "#/$defs/hookCommands" },
         "pre_prepare": { "$ref": "#/$defs/hookCommands" },
-        "post_prepare":{ "$ref": "#/$defs/hookCommands" },
-        "pre_run":     { "$ref": "#/$defs/hookCommands" },
-        "post_run":    { "$ref": "#/$defs/hookCommands" },
-        "pre_stop":    { "$ref": "#/$defs/hookCommands" },
-        "post_stop":   { "$ref": "#/$defs/hookCommands" }
+        "post_prepare": { "$ref": "#/$defs/hookCommands" },
+        "pre_run": { "$ref": "#/$defs/hookCommands" },
+        "post_run": { "$ref": "#/$defs/hookCommands" },
+        "pre_stop": { "$ref": "#/$defs/hookCommands" },
+        "post_stop": { "$ref": "#/$defs/hookCommands" }
       }
     },
     "schemaVersion": {

@@ -1,20 +1,18 @@
 import type { Command } from 'commander';
 import pMap from 'p-map';
-import { resolveWorkspace, readProjectManifest } from '../../workspace/locate.js';
-import { resolveRepos } from '../../workspace/repos.js';
-import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
-import { emit, emitJson, getLogger } from '../../util/logger.js';
-import { inheritRootOptions } from '../options.js';
-import { resolveJobs } from '../../util/concurrency.js';
-import { prepareService } from '../../prepare/prepare.js';
-import { selectRepos } from '../repos.js';
 import { parseCliEnv } from '../../env/composer.js';
-import type {
-  LoadedDocument,
-} from '../../manifest/loader.js';
+import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
+import type { LoadedDocument } from '../../manifest/loader.js';
 import { loadManifestFile } from '../../manifest/loader.js';
 import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
+import { prepareService } from '../../prepare/prepare.js';
+import { resolveJobs } from '../../util/concurrency.js';
 import { UserError } from '../../util/exit-codes.js';
+import { emit, emitJson, getLogger } from '../../util/logger.js';
+import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
+import { resolveRepos } from '../../workspace/repos.js';
+import { inheritRootOptions } from '../options.js';
+import { selectRepos } from '../repos.js';
 
 export function registerPrepare(program: Command): void {
   program

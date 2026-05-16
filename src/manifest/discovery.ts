@@ -2,9 +2,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import pMap from 'p-map';
 import { isDirectory } from '../util/fs.js';
-import { loadManifestFile, type LoadedDocument } from './loader.js';
-import { isKnownKind, validateDocument, type ValidationIssue } from './validator.js';
+import { type LoadedDocument, loadManifestFile } from './loader.js';
 import type { ManifestKind } from './types/index.js';
+import { isKnownKind, type ValidationIssue, validateDocument } from './validator.js';
 
 const MAX_DEPTH = 4;
 const SKIP_DIRS = new Set([
@@ -125,9 +125,7 @@ export interface DiscoveryOptions {
  * repos) are checked at the caller layer; here we only enforce unique names
  * inside the union of manifests.
  */
-export async function buildWorkspaceRegistry(
-  opts: DiscoveryOptions,
-): Promise<WorkspaceRegistry> {
+export async function buildWorkspaceRegistry(opts: DiscoveryOptions): Promise<WorkspaceRegistry> {
   const issues: ValidationIssue[] = [];
   const all: RegistryEntry[] = [];
 

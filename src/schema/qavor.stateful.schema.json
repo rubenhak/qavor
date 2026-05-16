@@ -8,7 +8,9 @@
   "required": ["kind", "name"],
   "properties": {
     "kind": { "const": "stateful" },
-    "schemaVersion": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/schemaVersion" },
+    "schemaVersion": {
+      "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/schemaVersion"
+    },
     "name": {
       "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name",
       "description": "Stateful service identifier. Must be unique within the workspace."

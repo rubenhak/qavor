@@ -1,7 +1,7 @@
 import { execa } from 'execa';
+import type { HookCommands, Hooks } from '../manifest/types/index.js';
 import { RuntimeFailure } from './exit-codes.js';
 import type { Logger } from './logger.js';
-import type { Hooks, HookCommands } from '../manifest/types/index.js';
 
 const HOOK_EVENTS = [
   'pre_clone',

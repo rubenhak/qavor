@@ -1,5 +1,5 @@
-import fs from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathExists } from '../util/fs.js';
 
@@ -30,7 +30,7 @@ export async function tailFile(opts: TailOptions): Promise<void> {
   await streamFrom(opts.file, offset, opts.out);
   if (!opts.follow) return;
 
-  let stat = await fs.stat(opts.file);
+  const stat = await fs.stat(opts.file);
   offset = stat.size;
 
   const watcher = fs.watch(opts.file, { persistent: true });

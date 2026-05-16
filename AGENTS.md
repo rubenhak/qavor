@@ -57,7 +57,7 @@ Do not substitute alternatives without a new ADR.
 - **Compose:** parse/emit via the `yaml` library validated with `ajv` against the compose-spec schema.
 - **dotenv:** the `dotenv` package — for parsing only. qavor owns precedence (see §7).
 - **Testing:** Node's built-in `node:test` with `tsx`. Promote to `vitest` only if richer fixtures justify it; do not introduce both.
-- **Lint/format:** `eslint` + `typescript-eslint` + `prettier`.
+- **Lint/format:** `biome` (replaces ESLint + Prettier). Config in `biome.jsonc`. Run via `pnpm lint` (check) or `pnpm format` (fix).
 - **Bundling:** `tsup` (esbuild) emits an ESM CLI bundle as the SEA input.
 - **Distribution:** Node Single Executable Application (SEA) for `darwin/arm64`, `darwin/amd64`, `linux/amd64`, `linux/arm64`. Plus a published `@<org>/qavor` npm package.
 
@@ -216,7 +216,7 @@ Keep files small and single-purpose. Don't introduce framework-style abstraction
 - Use `testdata/` fixtures: a project repo + 3 toy repos (1 node, 2 python/uv). Git remotes are `file://` URLs for hermetic tests.
 - For supervisor edge cases (process groups, SIGTERM-then-SIGKILL, log rotation), write table-driven tests.
 - Smoke-test against a 25-repo fixture before each release to catch FD/concurrency regressions.
-- Lint, type-check, and tests must pass in CI before merge. `pnpm lint && pnpm test && pnpm gen:types --check` is the gate.
+- Lint, type-check, and tests must pass in CI before merge. `./lint.sh` runs the full static-analysis gate (biome check, generated-types check, typecheck). `pnpm test` runs the test suite. Both must be green before declaring work done.
 
 ---
 
@@ -229,7 +229,7 @@ Before generating non-trivial code:
 3. **Plan, then code.** Multi-file changes deserve a brief plan or todo list before edits. Keep changes focused on one workstream at a time.
 4. **Respect the scope boundary.** If a request implies deferred functionality, surface that in chat — don't quietly grow the MVP.
 5. **No new top-level dependencies** without justifying them against the locked toolchain in §4. Prefer using what's already there.
-6. **Run lint + tests** before declaring work done. Fix lints you introduce; only touch pre-existing lints when they obstruct the change.
+6. **Run lint + tests** before declaring work done. After every non-trivial change run `./lint.sh` (biome check, generated-types check, typecheck) and then `pnpm test`. Fix any lint errors you introduce; only touch pre-existing lint warnings when they obstruct the change.
 7. **Commit messages** follow the docs' style (concise, present tense, scoped: e.g. `manifest: ...`, `cli: ...`, `supervisor: ...`). Reference the workstream id (e.g. `D2`) where applicable. Never commit without explicit user request.
 
 ---

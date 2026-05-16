@@ -1,10 +1,12 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { buildFixtureRepos, makeTempDir, cleanup, runCli } from './helpers/fixtures.js';
+import { test } from 'node:test';
+import { buildFixtureRepos, cleanup, makeTempDir, runCli } from './helpers/fixtures.js';
 
-function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 test('qavor up/ps/down: lifecycle works against the auth fixture', async () => {
   const fixtures = await buildFixtureRepos({ services: ['auth'] });
@@ -32,7 +34,11 @@ test('qavor up/ps/down: lifecycle works against the auth fixture', async () => {
 
     // confirm the state file has been removed.
     let exists = true;
-    try { await fs.access(path.join(ws, '.qavor', 'state', 'auth.json')); } catch { exists = false; }
+    try {
+      await fs.access(path.join(ws, '.qavor', 'state', 'auth.json'));
+    } catch {
+      exists = false;
+    }
     assert.equal(exists, false, 'state file should be cleared after down');
   } finally {
     await cleanup(fixtures.base);

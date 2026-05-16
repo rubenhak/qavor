@@ -1,11 +1,11 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { makeTempDir, cleanup } from './helpers/fixtures.js';
-import { loadManifestFile } from '../src/manifest/loader.js';
+import { test } from 'node:test';
 import { composeServiceEnv, parseCliEnv } from '../src/env/composer.js';
+import { loadManifestFile } from '../src/manifest/loader.js';
 import type { ServiceManifest } from '../src/manifest/types/index.js';
+import { cleanup, makeTempDir } from './helpers/fixtures.js';
 
 async function setup(opts: {
   manifest: string;
@@ -50,7 +50,7 @@ test('env: precedence common < native < .env < .env.native < workspace .env < cl
     const composed = await composeServiceEnv({
       mode: 'native',
       serviceDoc: docs[0]!,
-      service: docs[0]!.data as unknown as ServiceManifest,
+      service: docs[0]?.data as unknown as ServiceManifest,
       workspaceRoot,
       cliEnv: { F: 'cli' },
     });
@@ -85,7 +85,7 @@ test('env: interpolation against prior layers', async () => {
     const composed = await composeServiceEnv({
       mode: 'native',
       serviceDoc: docs[0]!,
-      service: docs[0]!.data as unknown as ServiceManifest,
+      service: docs[0]?.data as unknown as ServiceManifest,
       workspaceRoot,
     });
     assert.equal(composed.values.get('URL')?.value, 'http://localhost:8080/api');
@@ -116,7 +116,7 @@ test('env: missing required envSpec fails', async () => {
     const composed = await composeServiceEnv({
       mode: 'native',
       serviceDoc: docs[0]!,
-      service: docs[0]!.data as unknown as ServiceManifest,
+      service: docs[0]?.data as unknown as ServiceManifest,
       workspaceRoot,
     });
     assert.ok(composed.issues.length > 0, 'expected an issue for missing required env');
@@ -144,10 +144,13 @@ test('env: ${secret:...} fails closed at v0', async () => {
     const composed = await composeServiceEnv({
       mode: 'native',
       serviceDoc: docs[0]!,
-      service: docs[0]!.data as unknown as ServiceManifest,
+      service: docs[0]?.data as unknown as ServiceManifest,
       workspaceRoot,
     });
-    assert.ok(composed.issues.some((i) => i.message.includes('reserved')), 'secret syntax should fail closed');
+    assert.ok(
+      composed.issues.some((i) => i.message.includes('reserved')),
+      'secret syntax should fail closed',
+    );
   } finally {
     await cleanupFn();
   }
@@ -155,9 +158,9 @@ test('env: ${secret:...} fails closed at v0', async () => {
 
 test('parseCliEnv: parses KEY=VAL pairs', () => {
   const parsed = parseCliEnv(['A=1', 'B=hello world', 'C=']);
-  assert.equal(parsed['A'], '1');
-  assert.equal(parsed['B'], 'hello world');
-  assert.equal(parsed['C'], '');
+  assert.equal(parsed.A, '1');
+  assert.equal(parsed.B, 'hello world');
+  assert.equal(parsed.C, '');
 });
 
 test('parseCliEnv: rejects missing equals', () => {

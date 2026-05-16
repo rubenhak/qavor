@@ -8,7 +8,9 @@
   "required": ["kind", "name", "repositories"],
   "properties": {
     "kind": { "const": "project" },
-    "schemaVersion": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/schemaVersion" },
+    "schemaVersion": {
+      "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/schemaVersion"
+    },
     "name": {
       "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name",
       "description": "Human-readable workspace name. Used as the compose project namespace and the on-disk workspace identifier."
@@ -36,7 +38,7 @@
           "enum": ["ssh", "https"],
           "description": "Hint for clone URL form when `root_url` is a host instead of a full URL."
         },
-        "shallow":    { "type": "boolean", "default": false },
+        "shallow": { "type": "boolean", "default": false },
         "submodules": { "type": "boolean", "default": false }
       }
     },
@@ -77,7 +79,7 @@
           "description": "Explicit git URL. Overrides URL derivation from `git.root_url` + `git.repo_prefix`."
         },
         "branch": { "type": "string" },
-        "tag":    { "type": "string" },
+        "tag": { "type": "string" },
         "commit": {
           "type": "string",
           "pattern": "^[0-9a-f]{7,40}$"
@@ -92,9 +94,9 @@
           "uniqueItems": true,
           "description": "Inline group memberships in addition to the top-level `groups` map."
         },
-        "shallow":    { "type": "boolean" },
+        "shallow": { "type": "boolean" },
         "submodules": { "type": "boolean" },
-        "optional":   {
+        "optional": {
           "type": "boolean",
           "default": false,
           "description": "Skip rather than fail if cloning is not authorized."

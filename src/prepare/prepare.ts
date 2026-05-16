@@ -2,15 +2,15 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { execa, type Options as ExecaOptions } from 'execa';
-import { RuntimeFailure, ManifestError } from '../util/exit-codes.js';
-import { ensureDir, readJsonFile, writeJsonFile, pathExists } from '../util/fs.js';
-import { composeServiceEnv, toEnvObject, assertNoIssues } from '../env/composer.js';
+import { type Options as ExecaOptions, execa } from 'execa';
+import { assertNoIssues, composeServiceEnv, toEnvObject } from '../env/composer.js';
 import type { LoadedDocument } from '../manifest/loader.js';
 import type { ServiceManifest } from '../manifest/types/index.js';
-import type { WorkspacePaths } from '../workspace/paths.js';
-import type { Logger } from '../util/logger.js';
+import { ManifestError, RuntimeFailure } from '../util/exit-codes.js';
+import { ensureDir, pathExists, readJsonFile, writeJsonFile } from '../util/fs.js';
 import { runHooks } from '../util/hooks.js';
+import type { Logger } from '../util/logger.js';
+import type { WorkspacePaths } from '../workspace/paths.js';
 
 const DEFAULT_LOCK_PATTERNS = [
   'package-lock.json',
@@ -66,7 +66,10 @@ export async function prepareService(input: PrepareInput): Promise<PrepareResult
   if (!input.force) {
     const prev = await readPrev(cacheFile);
     if (prev && prev.hash === hash) {
-      input.logger.info({ service: input.service.name }, 'prepare: lockfile hash unchanged; skipping');
+      input.logger.info(
+        { service: input.service.name },
+        'prepare: lockfile hash unchanged; skipping',
+      );
       return { serviceName: input.service.name, status: 'skipped', cacheFile, hash };
     }
   }
@@ -153,7 +156,7 @@ async function readPrev(file: string): Promise<{ hash: string } | null> {
 
 async function computePrepareHash(manifestDir: string, cmd: string): Promise<string> {
   const hash = createHash('sha256');
-  hash.update('cmd:' + cmd + '\n');
+  hash.update(`cmd:${cmd}\n`);
   for (const candidate of DEFAULT_LOCK_PATTERNS) {
     const file = path.join(manifestDir, candidate);
     const stat = await safeStat(file);

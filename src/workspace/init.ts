@@ -1,14 +1,14 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { UserError, ManifestError } from '../util/exit-codes.js';
-import { ensureDir, globalCacheDir, isDirectory, writeJsonFile } from '../util/fs.js';
 import { gitClone, isGitRepo } from '../git/git.js';
 import { loadManifestFile } from '../manifest/loader.js';
-import { validateDocument } from '../manifest/validator.js';
-import type { Logger } from '../util/logger.js';
-import { workspacePaths, type WorkspacePaths } from './paths.js';
 import type { ProjectManifest } from '../manifest/types/index.js';
+import { validateDocument } from '../manifest/validator.js';
+import { ManifestError, UserError } from '../util/exit-codes.js';
+import { ensureDir, globalCacheDir, isDirectory, writeJsonFile } from '../util/fs.js';
+import type { Logger } from '../util/logger.js';
+import { type WorkspacePaths, workspacePaths } from './paths.js';
 
 export interface InitOptions {
   /** Project repo source: local path or git URL. */
@@ -82,7 +82,11 @@ export async function initWorkspace(opts: InitOptions): Promise<InitResult> {
         await ensureDir(cacheDir);
         await fs.writeFile(
           path.join(cacheDir, 'source.json'),
-          JSON.stringify({ url: opts.source, cloned_to: target, at: new Date().toISOString() }, null, 2),
+          JSON.stringify(
+            { url: opts.source, cloned_to: target, at: new Date().toISOString() },
+            null,
+            2,
+          ),
         );
       } catch {
         /* non-fatal */
@@ -133,7 +137,7 @@ export async function initWorkspace(opts: InitOptions): Promise<InitResult> {
   );
 
   // Write the workspaces pointer (idempotent).
-  const relProjectPath = './' + path.relative(workspaceRoot, projectRepoPath).split(path.sep).join('/');
+  const relProjectPath = `./${path.relative(workspaceRoot, projectRepoPath).split(path.sep).join('/')}`;
   const workspacesYaml = renderWorkspacesYaml(relProjectPath);
   await fs.writeFile(paths.workspacesFile, workspacesYaml, 'utf8');
 

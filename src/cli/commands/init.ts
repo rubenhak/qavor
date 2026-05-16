@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { Command } from 'commander';
-import { getLogger, emit, emitJson } from '../../util/logger.js';
+import { emit, emitJson, getLogger } from '../../util/logger.js';
 import { initWorkspace } from '../../workspace/init.js';
 import { inheritRootOptions } from '../options.js';
 

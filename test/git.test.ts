@@ -1,8 +1,8 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { buildFixtureRepos, makeTempDir, cleanup, runCli } from './helpers/fixtures.js';
+import { test } from 'node:test';
+import { buildFixtureRepos, cleanup, makeTempDir, runCli } from './helpers/fixtures.js';
 
 test('qavor clone: clones the repos listed in the project manifest', async () => {
   const fixtures = await buildFixtureRepos({ services: ['web', 'auth'] });
@@ -52,7 +52,11 @@ test('qavor clone: --repo selector clones only the requested repo', async () => 
     assert.equal(r.exitCode, 0, `selective clone failed: ${r.stderr}`);
     await fs.stat(path.join(ws, 'web.git'));
     let authExists = true;
-    try { await fs.stat(path.join(ws, 'auth.git')); } catch { authExists = false; }
+    try {
+      await fs.stat(path.join(ws, 'auth.git'));
+    } catch {
+      authExists = false;
+    }
     assert.equal(authExists, false, 'auth.git should not have been cloned');
   } finally {
     await cleanup(fixtures.base);

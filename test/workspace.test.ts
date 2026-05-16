@@ -1,8 +1,8 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { buildFixtureRepos, makeTempDir, cleanup, runCli, fileUrl } from './helpers/fixtures.js';
+import { test } from 'node:test';
+import { buildFixtureRepos, cleanup, fileUrl, makeTempDir, runCli } from './helpers/fixtures.js';
 
 test('qavor init: from local project repo path is idempotent', async () => {
   const fixtures = await buildFixtureRepos({ services: ['web'] });
@@ -27,7 +27,9 @@ test('qavor init: from a file:// URL clones the project repo', async () => {
   const fixtures = await buildFixtureRepos({ services: ['web'] });
   const ws = await makeTempDir('qavor-ws-');
   try {
-    const r = await runCli(['init', fileUrl(fixtures.projectRepo), '--into', ws], { cwd: process.cwd() });
+    const r = await runCli(['init', fileUrl(fixtures.projectRepo), '--into', ws], {
+      cwd: process.cwd(),
+    });
     assert.equal(r.exitCode, 0, `init failed: ${r.stderr}`);
     const expected = path.join(ws, 'project-repo.git');
     const stat = await fs.stat(expected);
