@@ -1,0 +1,18 @@
+kind: service
+name: notes
+description: Second toy python service.
+runtime:
+  native:
+    enabled: true
+    check_installed:
+      cmd: "python3 --version"
+    prepare:
+      cmd: "python3 -c 'print(\"prepared\")'"
+    run:
+      cmd: "python3 -c 'import time;print(\"notes running\");time.sleep(3600)'"
+
+mode: native
+
+env:
+  common:
+    PORT: 9090

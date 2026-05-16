@@ -1,0 +1,303 @@
+/* eslint-disable */
+// AUTO-GENERATED — do not edit by hand.
+// Source: docs/schemas/*.json
+// Regenerate with `pnpm gen:types`.
+export type QavorManifest =
+  | WorkspacesManifest
+  | ProjectManifest
+  | RepoManifest
+  | ServiceManifest
+  | StatefulManifest
+  | ProfileManifest;
+/**
+ * Manifest schema version. Defaults to 1 if omitted.
+ */
+export type SchemaVersion = 1;
+/**
+ * Lowercase identifier. Letters, digits, dot, dash, underscore. 1-63 chars. Used as service/stateful/profile/repo/group identifiers.
+ */
+export type Name = string;
+export type ProjectRepoEntry = {
+  [k: string]: unknown | undefined;
+} & {
+  name: Name;
+  /**
+   * Explicit git URL. Overrides URL derivation from `git.root_url` + `git.repo_prefix`.
+   */
+  url?: string;
+  branch?: string;
+  tag?: string;
+  commit?: string;
+  /**
+   * Workspace-relative clone path. Defaults to `./<name>` (or `./<name>.git` to match the conventional layout).
+   */
+  path?: string;
+  /**
+   * Inline group memberships in addition to the top-level `groups` map.
+   */
+  groups?: Name[];
+  shallow?: boolean;
+  submodules?: boolean;
+  /**
+   * Skip rather than fail if cloning is not authorized.
+   */
+  optional?: boolean;
+};
+/**
+ * One or more shell commands or paths to executable scripts, run in the manifest's directory.
+ */
+export type HookCommands = string | [string, ...string[]];
+/**
+ * Scalar value usable on the right-hand side of an env entry. Strings support ${VAR} and ${secret:NAME} interpolation.
+ */
+export type EnvScalar = string | number | boolean;
+/**
+ * A single dependency edge. Exactly one of `service`, `stateful`, or `group` must be set.
+ */
+export type Requirement = {
+  /**
+   * Service reference. `<service>` for same-workspace, `<repo>:<service>` permitted.
+   */
+  service?: string;
+  stateful?: Name;
+  group?: Name;
+  optional?: boolean;
+  /**
+   * Optional gating expression. Examples: `mode == 'docker'`, `profile == 'dev'`, `os == 'darwin'`.
+   */
+  condition?: string;
+  /**
+   * Whether to wait for process-up or for the readiness probe to pass before starting dependents.
+   */
+  waitFor?: 'start' | 'ready';
+} & Requirement1;
+export type Requirement1 = {
+  [k: string]: unknown | undefined;
+};
+
+/**
+ * Workspace pointer file. Lives at the root of the workspace directory as `qavor.yaml` and is created automatically by `qavor init`. Its only job is to point at the project repo whose `kind: project` manifest enumerates the rest of the workspace.
+ */
+export interface WorkspacesManifest {
+  kind: 'workspaces';
+  schemaVersion?: SchemaVersion;
+  /**
+   * Workspace-relative path to the directory containing the project repo's `qavor.yaml` (kind: project).
+   */
+  root_project_path: string;
+}
+/**
+ * Project-level manifest. Lives at the root of the project repo as `qavor.yaml`. Defines workspace identity and enumerates the repos that make up the workspace.
+ */
+export interface ProjectManifest {
+  kind: 'project';
+  schemaVersion?: SchemaVersion;
+  name: Name;
+  description?: string;
+  git?: {
+    /**
+     * Base git URL for repos in this project. Combined with `repo_prefix` and a repo `name` to derive the clone URL when no explicit `url` is given.
+     */
+    root_url?: string;
+    /**
+     * Optional prefix prepended to repo names when deriving clone URLs.
+     */
+    repo_prefix?: string;
+    /**
+     * Default branch used when a repo entry does not pin its own.
+     */
+    default_branch?: string;
+    /**
+     * Hint for clone URL form when `root_url` is a host instead of a full URL.
+     */
+    remote?: 'ssh' | 'https';
+    shallow?: boolean;
+    submodules?: boolean;
+  };
+  /**
+   * Named groups of repo names. A repo may appear in multiple groups. Repos can also self-declare additional group memberships in their own `kind: repo` or service/stateful manifests.
+   */
+  groups?: {
+    /**
+     * @minItems 1
+     *
+     * This interface was referenced by `undefined`'s JSON-Schema definition
+     * via the `patternProperty` "^[a-z0-9][a-z0-9._-]{0,62}$".
+     */
+    [k: string]: [Name, ...Name[]];
+  };
+  /**
+   * Repos that compose the workspace. Each entry is either a bare name (URL derived from `git.root_url` + `git.repo_prefix` + name) or an object with explicit fields.
+   *
+   * @minItems 1
+   */
+  repositories: [Name | ProjectRepoEntry, ...(Name | ProjectRepoEntry)[]];
+}
+/**
+ * Per-repo metadata. Lives at the root of an individual repo as `qavor.yaml` (or as one document of a multi-document `qavor.yaml`). Carries information that is not specific to a single service: identity, group membership, and lifecycle hooks that fire around qavor verbs at the repo level.
+ */
+export interface RepoManifest {
+  kind: 'repo';
+  schemaVersion?: SchemaVersion;
+  name: Name;
+  description?: string;
+  /**
+   * Additional group memberships, layered on top of any groups assigned by the project manifest.
+   */
+  groups?: Name[];
+  hooks?: Hooks;
+}
+/**
+ * Lifecycle hooks. Each hook list runs in the manifest's directory at the corresponding lifecycle event.
+ */
+export interface Hooks {
+  pre_clone?: HookCommands;
+  post_clone?: HookCommands;
+  pre_prepare?: HookCommands;
+  post_prepare?: HookCommands;
+  pre_run?: HookCommands;
+  post_run?: HookCommands;
+  pre_stop?: HookCommands;
+  post_stop?: HookCommands;
+}
+/**
+ * Runnable application. Lives at the root of a single-service repo as `qavor.yaml`, or under a sub-directory of a multi-service repo (e.g. `service-foo/qavor.yaml`). When this manifest is at the root of a repo, its `groups` also define repo-level group membership.
+ */
+export interface ServiceManifest {
+  kind: 'service';
+  schemaVersion?: SchemaVersion;
+  name: Name;
+  description?: string;
+  /**
+   * Additional group memberships. When this manifest is at the root of a repo, these also define repo group membership.
+   */
+  groups?: Name[];
+  /**
+   * Profiles applied to this service in declaration order. Profile values are layered first; this manifest's own `runtime` and `env` are merged on top.
+   */
+  profiles?: Name[];
+  runtime?: RuntimeBlock;
+  /**
+   * Default run mode for this service. Overridable per invocation via `--mode`. Must match a backend whose `enabled: true` is set on this service or one of its profiles.
+   */
+  mode?: 'native' | 'docker';
+  /**
+   * Dependencies that must be running before this service starts.
+   */
+  require?: Requirement[];
+  env?: EnvBlock;
+  hooks?: Hooks;
+}
+/**
+ * Available runtime backends. A service or stateful manifest may declare any subset; the active backend is chosen by the resolved `mode`.
+ */
+export interface RuntimeBlock {
+  native?: RuntimeBackend;
+  docker?: RuntimeBackend;
+  'docker-compose'?: RuntimeBackend;
+}
+/**
+ * Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run.
+ */
+export interface RuntimeBackend {
+  enabled?: boolean;
+  check_installed?: RuntimeStep;
+  install?: RuntimeStep;
+  prepare?: RuntimeStep;
+  run?: RuntimeStep;
+}
+/**
+ * Single shell step in a runtime block (check_installed, install, prepare, run).
+ */
+export interface RuntimeStep {
+  /**
+   * Shell command. Multiline strings are treated as a script.
+   */
+  cmd: string;
+  /**
+   * Working directory relative to the manifest file.
+   */
+  cwd?: string;
+  env?: EnvMap;
+  /**
+   * Override shell. Defaults to `/bin/sh -c` (POSIX) or `cmd /C` on Windows.
+   */
+  shell?: string;
+}
+/**
+ * Map of env names to scalar values or long-form envSpec entries.
+ */
+export interface EnvMap {
+  /**
+   * This interface was referenced by `EnvMap`'s JSON-Schema definition
+   * via the `patternProperty` "^[A-Z_][A-Z0-9_]*$".
+   */
+  [k: string]: EnvScalar | EnvSpec;
+}
+/**
+ * Long-form env entry. Use when you need typing, validation, default vs override, secret marking, or documentation.
+ */
+export interface EnvSpec {
+  value?: EnvScalar;
+  default?: EnvScalar;
+  required?: boolean;
+  type?: 'string' | 'int' | 'number' | 'bool' | 'url' | 'duration';
+  pattern?: string;
+  secret?: boolean;
+  description?: string;
+}
+/**
+ * Layered env block. `common` always applies; `native` or `docker` is layered on top depending on the active run mode. See the proposal section on Manifest Resolution Order for the full precedence chain.
+ */
+export interface EnvBlock {
+  common?: EnvMap;
+  native?: EnvMap;
+  docker?: EnvMap;
+}
+/**
+ * Externally provided stateful service (postgres, kafka, redis, ...). Lives at the root of a stateful-dep repo as `qavor.yaml`, or under a sub-directory of a deps repo (e.g. `postgresql/qavor.yaml`). At v0 stateful services run via `docker-compose` and qavor owns the generated compose project (per ADR-005).
+ */
+export interface StatefulManifest {
+  kind: 'stateful';
+  schemaVersion?: SchemaVersion;
+  name: Name;
+  description?: string;
+  /**
+   * Additional group memberships. When this manifest is at the root of a repo, these also define repo group membership.
+   */
+  groups?: Name[];
+  profiles?: Name[];
+  runtime?: RuntimeBlock;
+  /**
+   * Default run mode. v0 stateful services should use `docker-compose`.
+   */
+  mode?: 'docker-compose' | 'native' | 'docker';
+  require?: Requirement[];
+  env?: StatefulEnvBlock;
+  hooks?: Hooks;
+}
+/**
+ * Env block for a stateful service. Adds `publish`: env vars exposed to dependents at start time.
+ */
+export interface StatefulEnvBlock {
+  common?: EnvMap;
+  native?: EnvMap;
+  docker?: EnvMap;
+  publish?: EnvMap;
+}
+/**
+ * Reusable runtime + env bundle. Referenced by services and stateful manifests via the `profiles:` list. Profiles can themselves reference other profiles; resolution flattens the chain in declaration order with later entries winning. A profile's runtime/env layer below the referencing manifest's own runtime/env.
+ */
+export interface ProfileManifest {
+  kind: 'profile';
+  schemaVersion?: SchemaVersion;
+  name: Name;
+  description?: string;
+  /**
+   * Other profiles this one extends. Resolved in declaration order before this profile's own values are applied.
+   */
+  profiles?: Name[];
+  runtime?: RuntimeBlock;
+  mode?: 'native' | 'docker' | 'docker-compose';
+  env?: EnvBlock;
+}

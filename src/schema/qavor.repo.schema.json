@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qavor.dev/schemas/qavor.repo.schema.json",
+  "title": "qavor repo manifest",
+  "description": "Per-repo metadata. Lives at the root of an individual repo as `qavor.yaml` (or as one document of a multi-document `qavor.yaml`). Carries information that is not specific to a single service: identity, group membership, and lifecycle hooks that fire around qavor verbs at the repo level.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "name"],
+  "properties": {
+    "kind": { "const": "repo" },
+    "schemaVersion": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/schemaVersion" },
+    "name": {
+      "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name",
+      "description": "Repository identifier. Must match the `name` used in the project manifest's `repositories` list."
+    },
+    "description": { "type": "string" },
+    "groups": {
+      "type": "array",
+      "items": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name" },
+      "uniqueItems": true,
+      "description": "Additional group memberships, layered on top of any groups assigned by the project manifest."
+    },
+    "hooks": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/hooks" }
+  }
+}

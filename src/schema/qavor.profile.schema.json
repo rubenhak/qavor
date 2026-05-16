@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qavor.dev/schemas/qavor.profile.schema.json",
+  "title": "qavor profile manifest",
+  "description": "Reusable runtime + env bundle. Referenced by services and stateful manifests via the `profiles:` list. Profiles can themselves reference other profiles; resolution flattens the chain in declaration order with later entries winning. A profile's runtime/env layer below the referencing manifest's own runtime/env.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "name"],
+  "properties": {
+    "kind": { "const": "profile" },
+    "schemaVersion": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/schemaVersion" },
+    "name": {
+      "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name",
+      "description": "Profile identifier. Referenced from `profiles:` lists and from CLI flags."
+    },
+    "description": { "type": "string" },
+    "profiles": {
+      "type": "array",
+      "items": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/profileRef" },
+      "uniqueItems": true,
+      "description": "Other profiles this one extends. Resolved in declaration order before this profile's own values are applied."
+    },
+    "runtime": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/runtimeBlock" },
+    "mode": {
+      "type": "string",
+      "enum": ["native", "docker", "docker-compose"]
+    },
+    "env": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/envBlock" }
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qavor.dev/schemas/qavor.project.schema.json",
+  "title": "qavor project manifest",
+  "description": "Project-level manifest. Lives at the root of the project repo as `qavor.yaml`. Defines workspace identity and enumerates the repos that make up the workspace.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "name", "repositories"],
+  "properties": {
+    "kind": { "const": "project" },
+    "schemaVersion": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/schemaVersion" },
+    "name": {
+      "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name",
+      "description": "Human-readable workspace name. Used as the compose project namespace and the on-disk workspace identifier."
+    },
+    "description": { "type": "string" },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "root_url": {
+          "type": "string",
+          "description": "Base git URL for repos in this project. Combined with `repo_prefix` and a repo `name` to derive the clone URL when no explicit `url` is given."
+        },
+        "repo_prefix": {
+          "type": "string",
+          "description": "Optional prefix prepended to repo names when deriving clone URLs."
+        },
+        "default_branch": {
+          "type": "string",
+          "default": "main",
+          "description": "Default branch used when a repo entry does not pin its own."
+        },
+        "remote": {
+          "type": "string",
+          "enum": ["ssh", "https"],
+          "description": "Hint for clone URL form when `root_url` is a host instead of a full URL."
+        },
+        "shallow":    { "type": "boolean", "default": false },
+        "submodules": { "type": "boolean", "default": false }
+      }
+    },
+    "groups": {
+      "description": "Named groups of repo names. A repo may appear in multiple groups. Repos can also self-declare additional group memberships in their own `kind: repo` or service/stateful manifests.",
+      "type": "object",
+      "patternProperties": {
+        "^[a-z0-9][a-z0-9._-]{0,62}$": {
+          "type": "array",
+          "items": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name" },
+          "uniqueItems": true,
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "repositories": {
+      "description": "Repos that compose the workspace. Each entry is either a bare name (URL derived from `git.root_url` + `git.repo_prefix` + name) or an object with explicit fields.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name" },
+          { "$ref": "#/$defs/repoEntry" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "repoEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name" },
+        "url": {
+          "type": "string",
+          "description": "Explicit git URL. Overrides URL derivation from `git.root_url` + `git.repo_prefix`."
+        },
+        "branch": { "type": "string" },
+        "tag":    { "type": "string" },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative clone path. Defaults to `./<name>` (or `./<name>.git` to match the conventional layout)."
+        },
+        "groups": {
+          "type": "array",
+          "items": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name" },
+          "uniqueItems": true,
+          "description": "Inline group memberships in addition to the top-level `groups` map."
+        },
+        "shallow":    { "type": "boolean" },
+        "submodules": { "type": "boolean" },
+        "optional":   {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip rather than fail if cloning is not authorized."
+        }
+      },
+      "allOf": [
+        {
+          "description": "At most one of branch, tag, or commit may be set.",
+          "not": {
+            "anyOf": [
+              { "required": ["branch", "tag"] },
+              { "required": ["branch", "commit"] },
+              { "required": ["tag", "commit"] }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

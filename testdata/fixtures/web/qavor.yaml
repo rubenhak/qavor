@@ -1,0 +1,23 @@
+kind: service
+name: web
+description: A toy node service for tests.
+runtime:
+  native:
+    enabled: true
+    check_installed:
+      cmd: "node --version"
+    install:
+      cmd: "echo 'install node first'"
+    prepare:
+      cmd: "node -e 'process.stdout.write(\"ok\\n\")'"
+    run:
+      cmd: "node -e \"const http=require('http');const s=http.createServer((_,r)=>r.end('hi')).listen(process.env.PORT||0,()=>console.log('listening on',s.address().port));setInterval(()=>{},1000);\""
+
+mode: native
+
+env:
+  common:
+    PORT: 8081
+    LOG_LEVEL: info
+  native:
+    LOG_FORMAT: text

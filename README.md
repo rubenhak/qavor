@@ -36,19 +36,39 @@ Every YAML document carries a top-level `kind:` that selects its schema and orch
 
 See [`docs/manifests.md`](./docs/manifests.md) for canonical examples and [`docs/schemas/`](./docs/schemas/) for the formal JSON Schemas.
 
-## Typical workflow
+## Install (v0 / MVP)
+
+Requires Node.js 22 or newer (Node 26+ is the target SEA build).
 
 ```bash
-qavor init <project-repo-url>   # clone seed repo, write workspaces pointer, clone everything else
-qavor doctor                    # verify toolchains, container runtime, etc.
-qavor prepare                   # install / sync dependencies across all repos
-qavor up                        # start stateful deps + services in dependency order
-qavor status                    # aggregated repo + service health
-qavor logs <service>            # tailed, prefixed logs
-qavor down                      # graceful shutdown
+# From source
+git clone https://github.com/<org>/qavor.git
+cd qavor
+pnpm install
+pnpm build
+node ./dist/index.js --help
 ```
 
-All multi-repo verbs accept selectors: `--repo`, `--group`, `--tag`, plus state filters like `--dirty`, `--ahead`, `--behind`.
+A published `@qavor/qavor` npm package and per-platform Single Executable Application artifacts (darwin/arm64, darwin/amd64, linux/amd64, linux/arm64) ship in `v0.1.0`.
+
+## MVP quickstart
+
+```bash
+qavor init <project-repo-url-or-path>   # writes the workspaces pointer + .qavor/
+qavor doctor                            # verify toolchains, check_installed cmds
+qavor clone                             # clone every repo from the project manifest
+qavor prepare                           # run runtime.native.prepare for every service
+qavor env auth                          # resolved env with provenance
+qavor up auth                           # spawn the service under qavor's supervisor
+qavor logs auth -f                      # tail rotated logs from .qavor/logs/auth/
+qavor ps                                # liveness + uptime of tracked services
+qavor down auth                         # graceful SIGTERM then SIGKILL
+qavor status                            # aggregated repo state across all clones
+```
+
+All multi-repo verbs accept `--repo <name...>` selectors today. Group selectors, filter flags, docker mode, stateful services, profiles, and the dependency graph are deferred per [`docs/mvp-tasks.md`](./docs/mvp-tasks.md).
+
+`--json` flips every command to NDJSON output on stdout. Logs are always on stderr. Exit codes follow [`docs/exit-codes.md`](./docs/exit-codes.md). Global `--jobs N` overrides the default `os.availableParallelism()` concurrency for every fan-out.
 
 ## Documentation
 
@@ -56,6 +76,17 @@ All multi-repo verbs accept selectors: `--repo`, `--group`, `--tag`, plus state 
 - [`docs/manifests.md`](./docs/manifests.md) — manifest reference and source of truth.
 - [`docs/decisions.md`](./docs/decisions.md) — architectural decision records (ADRs).
 - [`docs/mvp-tasks.md`](./docs/mvp-tasks.md) — MVP delivery plan.
+- [`docs/exit-codes.md`](./docs/exit-codes.md) — CLI exit-code contract.
+
+## Development
+
+```bash
+pnpm install
+pnpm gen:types       # regenerate manifest TS types from docs/schemas/
+pnpm typecheck
+pnpm test            # node:test + tsx, hermetic fixtures under testdata/
+pnpm build           # tsup → dist/index.js (ESM, Node ≥22)
+```
 
 ## License
 

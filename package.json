@@ -1,0 +1,51 @@
+{
+  "name": "@qavor/qavor",
+  "version": "0.1.0",
+  "description": "A CLI for managing a constellation of related repositories as one cohesive developer workspace.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "qavor": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "schemas"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "qavor": "tsx src/index.ts",
+    "gen:types": "tsx scripts/gen-types.ts",
+    "gen:types:check": "tsx scripts/gen-types.ts --check",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "node --import tsx --test --test-reporter=spec test/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.7",
+    "execa": "^9.5.2",
+    "p-limit": "^6.2.0",
+    "p-map": "^7.0.3",
+    "p-queue": "^8.1.0",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "simple-git": "^3.27.0",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "json-schema-to-typescript": "^15.0.4",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "packageManager": "pnpm@9.15.9"
+}

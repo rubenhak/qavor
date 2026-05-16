@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qavor.dev/schemas/qavor.defs.schema.json",
+  "title": "qavor shared definitions",
+  "description": "Shared $defs referenced by every kind-specific qavor manifest schema. Has no top-level shape of its own; consume via $ref to /$defs/<name>.",
+  "type": "object",
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$",
+      "description": "Lowercase identifier. Letters, digits, dot, dash, underscore. 1-63 chars. Used as service/stateful/profile/repo/group identifiers."
+    },
+    "envKey": {
+      "type": "string",
+      "pattern": "^[A-Z_][A-Z0-9_]*$",
+      "description": "Conventional UPPER_SNAKE_CASE environment variable name."
+    },
+    "envScalar": {
+      "description": "Scalar value usable on the right-hand side of an env entry. Strings support ${VAR} and ${secret:NAME} interpolation.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" }
+      ]
+    },
+    "envSpec": {
+      "description": "Long-form env entry. Use when you need typing, validation, default vs override, secret marking, or documentation.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value":       { "$ref": "#/$defs/envScalar" },
+        "default":     { "$ref": "#/$defs/envScalar" },
+        "required":    { "type": "boolean", "default": false },
+        "type":        { "type": "string", "enum": ["string", "int", "number", "bool", "url", "duration"] },
+        "pattern":     { "type": "string", "format": "regex" },
+        "secret":      { "type": "boolean", "default": false },
+        "description": { "type": "string" }
+      }
+    },
+    "envMap": {
+      "description": "Map of env names to scalar values or long-form envSpec entries.",
+      "type": "object",
+      "patternProperties": {
+        "^[A-Z_][A-Z0-9_]*$": {
+          "oneOf": [
+            { "$ref": "#/$defs/envScalar" },
+            { "$ref": "#/$defs/envSpec" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "envBlock": {
+      "description": "Layered env block. `common` always applies; `native` or `docker` is layered on top depending on the active run mode. See the proposal section on Manifest Resolution Order for the full precedence chain.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "common": { "$ref": "#/$defs/envMap" },
+        "native": { "$ref": "#/$defs/envMap" },
+        "docker": { "$ref": "#/$defs/envMap" }
+      }
+    },
+    "statefulEnvBlock": {
+      "description": "Env block for a stateful service. Adds `publish`: env vars exposed to dependents at start time.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "common":  { "$ref": "#/$defs/envMap" },
+        "native":  { "$ref": "#/$defs/envMap" },
+        "docker":  { "$ref": "#/$defs/envMap" },
+        "publish": { "$ref": "#/$defs/envMap" }
+      }
+    },
+    "runtimeStep": {
+      "description": "Single shell step in a runtime block (check_installed, install, prepare, run).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cmd"],
+      "properties": {
+        "cmd":  { "type": "string", "description": "Shell command. Multiline strings are treated as a script." },
+        "cwd":  { "type": "string", "description": "Working directory relative to the manifest file." },
+        "env":  { "$ref": "#/$defs/envMap" },
+        "shell":{ "type": "string", "description": "Override shell. Defaults to `/bin/sh -c` (POSIX) or `cmd /C` on Windows." }
+      }
+    },
+    "runtimeBackend": {
+      "description": "Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled":          { "type": "boolean", "default": false },
+        "check_installed":  { "$ref": "#/$defs/runtimeStep" },
+        "install":          { "$ref": "#/$defs/runtimeStep" },
+        "prepare":          { "$ref": "#/$defs/runtimeStep" },
+        "run":              { "$ref": "#/$defs/runtimeStep" }
+      }
+    },
+    "runtimeBlock": {
+      "description": "Available runtime backends. A service or stateful manifest may declare any subset; the active backend is chosen by the resolved `mode`.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "native":         { "$ref": "#/$defs/runtimeBackend" },
+        "docker":         { "$ref": "#/$defs/runtimeBackend" },
+        "docker-compose": { "$ref": "#/$defs/runtimeBackend" }
+      }
+    },
+    "mode": {
+      "description": "Run mode. `docker-compose` is only valid for stateful manifests at v0.",
+      "type": "string",
+      "enum": ["native", "docker", "docker-compose"]
+    },
+    "profileRef": {
+      "description": "Reference to a profile by name. Profiles are merged in declaration order; later entries win.",
+      "$ref": "#/$defs/name"
+    },
+    "requirement": {
+      "description": "A single dependency edge. Exactly one of `service`, `stateful`, or `group` must be set.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "service":  { "type": "string", "description": "Service reference. `<service>` for same-workspace, `<repo>:<service>` permitted." },
+        "stateful": { "$ref": "#/$defs/name" },
+        "group":    { "$ref": "#/$defs/name" },
+        "optional": { "type": "boolean", "default": false },
+        "condition": {
+          "type": "string",
+          "description": "Optional gating expression. Examples: `mode == 'docker'`, `profile == 'dev'`, `os == 'darwin'`."
+        },
+        "waitFor": {
+          "type": "string",
+          "enum": ["start", "ready"],
+          "default": "ready",
+          "description": "Whether to wait for process-up or for the readiness probe to pass before starting dependents."
+        }
+      },
+      "oneOf": [
+        { "required": ["service"] },
+        { "required": ["stateful"] },
+        { "required": ["group"] }
+      ]
+    },
+    "hookCommands": {
+      "description": "One or more shell commands or paths to executable scripts, run in the manifest's directory.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      ]
+    },
+    "hooks": {
+      "description": "Lifecycle hooks. Each hook list runs in the manifest's directory at the corresponding lifecycle event.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pre_clone":   { "$ref": "#/$defs/hookCommands" },
+        "post_clone":  { "$ref": "#/$defs/hookCommands" },
+        "pre_prepare": { "$ref": "#/$defs/hookCommands" },
+        "post_prepare":{ "$ref": "#/$defs/hookCommands" },
+        "pre_run":     { "$ref": "#/$defs/hookCommands" },
+        "post_run":    { "$ref": "#/$defs/hookCommands" },
+        "pre_stop":    { "$ref": "#/$defs/hookCommands" },
+        "post_stop":   { "$ref": "#/$defs/hookCommands" }
+      }
+    },
+    "schemaVersion": {
+      "description": "Manifest schema version. Defaults to 1 if omitted.",
+      "type": "integer",
+      "enum": [1]
+    }
+  }
+}

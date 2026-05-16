@@ -1,0 +1,23 @@
+kind: service
+name: auth
+description: A toy python/uv service for tests.
+runtime:
+  native:
+    enabled: true
+    check_installed:
+      cmd: "python3 --version"
+    install:
+      cmd: "echo 'install python3 first'"
+    prepare:
+      cmd: "python3 -c 'print(\"ok\")'"
+    run:
+      cmd: "python3 -c 'import os,time;print(\"auth port=\"+str(os.environ.get(\"PORT\")));time.sleep(3600)'"
+
+mode: native
+
+env:
+  common:
+    PORT: 8080
+    LOG_LEVEL: info
+  native:
+    LOG_FORMAT: text
