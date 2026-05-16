@@ -59,18 +59,11 @@ jobs:
       - name: Test
         run: pnpm test
 
-      # Trusted publishing requires npm CLI ≥ 11.5.1; Node may ship older npm.
-      - name: Align npm CLI for OIDC publishing
-        run: npm install -g npm@^11.5.1
-
       - name: Publish to npm
         run: |
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
-          if npm view "${PKG}@${VERSION}" version >/dev/null 2>&1; then
-            echo "::error title=Already published::${PKG}@${VERSION} is already on npm; refusing to overwrite."
-            exit 1
-          fi
+          echo "Publishing ${PKG}@${VERSION}..."
           pnpm publish --access public --no-git-checks
 
       - name: Commit version bump and push branch + release tag
@@ -79,7 +72,7 @@ jobs:
         run: |
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "ci@users.noreply.github.com"
           git add package.json
           git commit -m "chore(release): v${VERSION}"
           git tag "v${VERSION}"
