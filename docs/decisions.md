@@ -1,0 +1,183 @@
+# qavor — Architecture Decision Records (ADRs)
+
+Decisions resolving the six open questions in section 9 of the [proposal](./proposal.md).
+
+Format: ADR-NNN, status, context, decision, consequences. Each can be revisited; supersede with a new ADR rather than editing in place.
+
+---
+
+## ADR-001 — Implementation language: **Node.js (TypeScript)**
+
+**Status:** Accepted (v0).
+
+**Context.** qavor is a lean wrapper that mostly orchestrates child processes (`git`, `docker`, language toolchains), composes config, walks a dependency graph in parallel, and serves a snappy CLI. The implementation language must offer ergonomic asynchronous subprocess orchestration, a mature ecosystem for YAML parsing (with source positions), JSON Schema validation, and git/compose tooling, fast iteration speed for what is largely orchestration glue, and the ability to ship a self-contained, easy-to-install artifact across macOS and Linux.
+
+**Options considered.**
+- **Node.js (TypeScript)** — first-class `async`/`await`, an excellent ecosystem for our workload (`execa`, `p-queue`, `eemeli/yaml` with source positions, `ajv` for JSON Schema, `simple-git`), and a large precedent for high-quality CLIs in this space (npm, pnpm, Vercel, Vite, Supabase, Prisma, SST, Nx, Turborepo). Modern Node ships a Single Executable Application (SEA) facility, closing the distribution gap that previously favoured compiled languages.
+- **Go** — also a strong fit (gh, kubectl, helm, k9s, lazygit, dagger). Rejected because TypeScript gives us materially faster iteration speed for orchestration glue, and Node's async I/O model maps more cleanly onto our subprocess-heavy, fan-out workload than goroutines + channels do for the same surface area.
+- **Rust** — stronger runtime guarantees, but slower iteration speed and a steeper authoring curve than is warranted for what is mostly orchestration glue.
+
+**Decision.** Node.js 26 (or newer) with TypeScript (strict mode), distributed as a Single Executable Application.
+
+**Implementation guidelines (binding).**
+- **Asynchronous everywhere.** All I/O uses asynchronous APIs (`node:fs/promises`, `execa`, the Promise-returning surface of `node:child_process`, streaming YAML helpers). Synchronous I/O is forbidden outside startup-only paths that have an explicit comment justifying the choice.
+- **Bounded parallelism.** Every fan-out operation (clone, prepare, status, log fetch, env resolution across services, …) routes through a concurrency limiter — `p-queue` for ordered fan-out with progress, `p-limit` for ad-hoc limits — so qavor never blows past OS/hardware ceilings (CPU, RAM, open file descriptors, socket count). The default concurrency derives from `os.availableParallelism()`; operators override globally via `--jobs N` and per workstream where it matters. Long-running operations stream output incrementally and respond to `SIGINT` / `SIGTERM` promptly.
+
+**Consequences.**
+- **Runtime:** Node.js 26 or newer; single supported runtime, no Bun/Deno fork at v0.
+- **Language:** TypeScript with `strict: true`, ES modules, target `ES2023`.
+- **Package manager:** `pnpm`.
+- **Toolchain (locked at v0):**
+  - CLI framework: `commander` (small, mature, async-friendly).
+  - YAML: `yaml` (eemeli/yaml) — preserves source positions for multi-document files and exposes the CST when richer diagnostics are needed.
+  - JSON Schema validation: `ajv` (draft 2020-12) + `ajv-formats`; schemas live under `docs/schemas/` and are imported as JSON.
+  - TypeScript types for manifests: generated from the JSON Schemas via `json-schema-to-typescript` so the schemas remain the single source of truth.
+  - Subprocess: `execa` (promise-based, streaming-friendly, structured errors, signal-safe).
+  - Concurrency control: `p-queue` (ordered, progress-aware), `p-limit` (lightweight), `p-map` for fan-out-with-results.
+  - Logging: `pino` with `pino-pretty` in TTY; structured JSON in non-TTY / `--json` mode.
+  - Git: `simple-git` for inspection (status, ahead/behind); we shell out via `execa` for mutating operations to keep behaviour identical to the user's `git` installation.
+  - Compose: parse/emit via the `yaml` library against the compose-spec JSON Schema validated with `ajv`.
+  - dotenv: `dotenv` for `.env` / `.env.native` / `.env.docker` loading (parsing only — qavor owns precedence).
+  - Testing: Node's built-in `node:test` runner with `tsx` for TS execution; promote to `vitest` only if richer fixtures justify it.
+  - Linting & formatting: `eslint` + `typescript-eslint` + `prettier`.
+  - Build: `tsup` (esbuild under the hood) emits an ESM CLI bundle as the SEA input.
+- **Distribution:** A Single Executable Application built per platform via Node's SEA facility for `darwin/arm64`, `darwin/amd64`, `linux/amd64`, `linux/arm64`. Homebrew tap and a `curl`-install script consume those artifacts. An `npm i -g @<org>/qavor` install path is also published for users who already have a Node runtime.
+- We accept a slightly larger distribution payload (the embedded Node runtime) in exchange for the ergonomic and ecosystem benefits above.
+
+---
+
+## ADR-002 — Process supervision: **own minimal supervisor for native, compose for docker / stateful**
+
+**Status:** Accepted (v0).
+
+**Context.** qavor must start and stop a heterogeneous set of services in topological order, gate dependents on readiness probes, multiplex logs, and shut down cleanly. Two extremes exist: build a full supervisor, or push everything through `docker compose`.
+
+**Options considered.**
+- **Own minimal native supervisor + compose for docker mode + compose for stateful** — Each native service runs as a child process tracked in `.qavor/state/`. We own the dependency graph, readiness gating, log multiplexing, signal handling, and PID lifecycle in TypeScript (using `node:child_process` + `execa`, async readiness probes, and a `p-queue`-bounded start loop). Container-mode services (`mode: docker`) and stateful deps (`kind: stateful`) are delegated to a generated compose project for batteries-included networking, restart policies, and volume management.
+- **Delegate native too (overmind/honcho/foreman)** — Reuses an existing supervisor but forces dual code paths for readiness gating, log prefixing, and dep-graph awareness, since none of those tools natively understand qavor's graph.
+- **Run everything through compose (incl. native)** — Forces every dev workflow through containers, which conflicts with the explicit "native vs docker per service, switchable per invocation" requirement (5.4) and the goal of low-latency hot-reload loops.
+
+**Decision.** Own minimal supervisor for `mode: native`; compose for `mode: docker` and for all `kind: stateful` documents. The supervisor is intentionally small: process spawn, env injection, stdout/stderr capture, signal handling, readiness probe loop, and PID/state file in `.qavor/state/`.
+
+**Consequences.**
+- Two execution backends share one orchestration plane (the dep graph, env composer, readiness gate).
+- We must implement: `start/stop/restart/status`, structured log capture with rotation, SIGTERM-then-SIGKILL with configurable grace, crash detection with optional restart policy, port allocation.
+- Each runtime backend in a manifest exposes the same four steps (`check_installed`, `install`, `prepare`, `run`); the supervisor cares only about `run` (and the readiness probe). The other three drive `qavor doctor` / `qavor prepare`.
+- We can later add a third backend (e.g., remote/SSH) without disturbing the orchestration plane.
+
+---
+
+## ADR-003 — Container runtime abstraction: **Docker only at v0**
+
+**Status:** Accepted (v0). Plugin extension for Podman / OrbStack / nerdctl deferred to v2.
+
+**Context.** Container build/run support spans build (`docker build` / BuildKit), run (`docker run` / `docker compose up`), and lifecycle ops. Supporting multiple runtimes from day one multiplies test surface and slows the MVP.
+
+**Options considered.**
+- **Docker only at v0** — Single code path, smallest test matrix, ships fastest. Most contributors and CI runners already have Docker.
+- **Multi-runtime from day one** — Larger surface area, more abstraction layers, slower MVP, and most differences (Podman socket, rootless, BuildKit availability) only matter for a minority.
+
+**Decision.** Docker (and `docker compose` v2 plugin) only at v0. We require Docker Engine ≥ 24 with BuildKit enabled. The container interaction layer is wrapped behind an internal `ContainerRuntime` interface so a Podman/OrbStack/nerdctl backend can drop in later as a plugin (per ADR-006 plugin model is post-MVP).
+
+**Consequences.**
+- The manifest model fixes runtime backend names to `native`, `docker`, and `docker-compose`. Future backends will add new keys without renaming the existing ones.
+- `qavor doctor` checks Docker presence/version/permissions and BuildKit availability.
+- OrbStack on macOS works transparently (Docker-compatible CLI).
+- Documented limitation: Podman users must wait for v2 or use Docker.
+
+---
+
+## ADR-004 — Bootstrap: **project-repo seeded; workspaces pointer is generated**
+
+**Status:** Accepted (v0). Supersedes the original "bootstrap manifest as a freestanding file" framing.
+
+**Context.** With per-repo declarative config, the very first `qavor` invocation has no repos yet. Some declarative artifact must enumerate the repos to clone, and it must be reachable before any clone happens. The earlier draft proposed a freestanding "bootstrap manifest" stored either locally or behind a URL; the manifest model in [manifests.md](./manifests.md) instead splits this responsibility into two `kind:`-discriminated documents.
+
+**The split.**
+- A **project repo** is the seed of the workspace. Its `qavor.yaml` is `kind: project` and lists every other repo to clone, with shared `git.root_url` / `repo_prefix` / `default_branch` to derive URLs from short names.
+- The **workspace directory** itself is not a git repo. At its root sits a tiny `qavor.yaml` with `kind: workspaces` and a single field — `root_project_path` — pointing at the cloned project repo. This file is generated by `qavor init` and is the only piece of workspace state that lives outside `.qavor/`.
+
+**Options considered.**
+- **Single freestanding bootstrap file (original proposal)** — Required deciding where it lives (file vs URL vs seed repo) and duplicated information that already belongs alongside the project's source of truth.
+- **Project-repo seeded + generated workspaces pointer (chosen)** — Source of truth (the project manifest) lives in a normal git repo so it benefits from review, history, and access controls. The on-disk `kind: workspaces` document is purely a runtime breadcrumb that ties the workspace dir to the project repo path.
+- **Inferred (no pointer file)** — Force the user to invoke qavor from inside the project repo. Rejected: workspaces typically contain many repos; running from any of them, or from the workspace root, must Just Work.
+
+**Decision.** `qavor init <project-repo-source>` is the only entry point.
+
+`<project-repo-source>` may be:
+1. A local path to an already-cloned project repo (treated as the project repo in place).
+2. A `git@…` or `https://…` git URL — qavor clones it under `<workspace-root>/<repo-name>.git/` and proceeds.
+3. A path inside an existing workspace dir (re-init / repair).
+
+After resolving the source, qavor:
+1. Ensures the workspace directory exists (creates it if `<workspace-root>` was supplied via `--into <dir>`; otherwise uses cwd).
+2. Reads the project repo's `qavor.yaml` (`kind: project`).
+3. Writes `<workspace-root>/qavor.yaml` (`kind: workspaces`) pointing to the project repo path.
+4. Clones the rest of the repos enumerated in the project manifest, applying `git.repo_prefix` / `git.default_branch` / per-repo overrides.
+
+**Consequences.**
+- Single source of truth for "what's in the workspace": the project repo's manifest, versioned like any other code.
+- Private project repos are reachable through the user's git credential helper — no second auth surface for qavor to manage.
+- The generated `kind: workspaces` file is small, deterministic, and safe to commit if a team chooses (it just records `root_project_path`).
+- A user can reproducibly recreate a workspace by running `qavor init <project-repo-url>` again into a new directory.
+
+---
+
+## ADR-005 — Compose file ownership: **generate-and-own with overlay overrides**
+
+**Status:** Accepted (v0).
+
+**Context.** Container services (`mode: docker`) and every `kind: stateful` need a compose project. Either qavor owns it end-to-end (generated from manifests) or qavor consumes a user-authored compose file.
+
+**Options considered.**
+- **Generate-and-own** — qavor renders a compose file into `.qavor/compose/docker-compose.yaml` from the declarative model. Pure source-of-truth in qavor manifests; users never edit the generated file.
+- **User-authored** — qavor reads an existing compose file and tries to align env/deps with manifests. Brittle, dual source of truth, hostile to the dependency graph.
+- **Generate-and-own with overlay overrides** — qavor owns the generated file, but supports user-supplied overlay files referenced from a manifest (e.g. via a `compose.override:` field on the relevant kind, defined later when the need arises). Overlays are merged using compose's standard `-f` stacking. Escape hatch without losing source-of-truth.
+
+**Decision.** Generate-and-own with overlay overrides.
+
+**Consequences.**
+- Generated file is treated as a build artifact: written under `.qavor/compose/`, regenerated on every relevant op, and listed in `.gitignore`.
+- The compose project is composed from every `kind: stateful` document plus every `kind: service` whose active mode is `docker`. The runtime block on each manifest provides the build/run command(s) qavor uses to populate the compose service.
+- Overlays (when introduced) are explicit, versioned, and limited (qavor warns when an overlay clobbers an env var that qavor would have published from a stateful's `publish:` map — provenance is preserved in `qavor explain`).
+- Compose project name is namespaced per workspace (the project manifest's `name`) to avoid collisions when multiple workspaces coexist.
+
+---
+
+## ADR-006 — Workspace state directory: **per-workspace `.qavor/` plus global `~/.cache/qavor/`**
+
+**Status:** Accepted (v0).
+
+**Context.** qavor needs to persist resolved env, last-known repo states, lockfile hashes, generated compose files, PIDs, logs, and downloaded artifacts (cached project repos, language toolchains where applicable).
+
+**Options considered.**
+- **Per-workspace only (`./.qavor/`)** — Self-contained, easy to reason about, but duplicates large artifacts (toolchains, image layers — though images are Docker's domain).
+- **Global only (`~/.cache/qavor/`)** — Shared cache, but workspace state in a global dir is fragile, hard to inspect, and complicates multi-workspace use.
+- **Both (split by purpose)** — Per-workspace `.qavor/` holds workspace-scoped state; global `~/.cache/qavor/` holds shared/immutable artifacts.
+
+**Decision.** Both, split by purpose.
+
+**Consequences.**
+- Per-workspace `./.qavor/` (gitignored by qavor's `init`):
+  - `state/` — PIDs, supervisor state, last health-check results.
+  - `logs/<service>/` — rotated log files.
+  - `compose/` — generated compose project.
+  - `cache/` — lockfile hashes, resolved env snapshots, dep-graph cache.
+  - `config.local.yaml` — workspace-local non-secret overrides.
+- Global `~/.cache/qavor/` (or `$XDG_CACHE_HOME/qavor/`):
+  - `projects/<hash>/` — cached clones of project repos when `qavor init` was given a URL into an empty workspace.
+  - `artifacts/` — downloaded helpers (e.g., schema files, optional tooling).
+- A `qavor clean` operates per-workspace by default; `qavor clean --global` clears the shared cache.
+
+---
+
+## Decision summary table
+
+| ADR | Topic | Decision |
+|---|---|---|
+| 001 | Implementation language | **Node.js (TypeScript)**, Node 26+, distributed as SEA |
+| 002 | Process supervision | Own minimal native supervisor + compose for docker / stateful |
+| 003 | Container runtime | **Docker only at v0**; pluggable later |
+| 004 | Bootstrap | **`qavor init <project-repo-source>`** — project repo is the seed; `kind: workspaces` pointer is generated |
+| 005 | Compose file | Generated-and-owned, with overlay overrides |
+| 006 | State directory | Per-workspace `./.qavor/` + global `~/.cache/qavor/` |

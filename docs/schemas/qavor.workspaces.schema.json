@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qavor.dev/schemas/qavor.workspaces.schema.json",
+  "title": "qavor workspaces manifest",
+  "description": "Workspace pointer file. Lives at the root of the workspace directory as `qavor.yaml` and is created automatically by `qavor init`. Its only job is to point at the project repo whose `kind: project` manifest enumerates the rest of the workspace.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "root_project_path"],
+  "properties": {
+    "kind": { "const": "workspaces" },
+    "schemaVersion": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/schemaVersion" },
+    "root_project_path": {
+      "type": "string",
+      "description": "Workspace-relative path to the directory containing the project repo's `qavor.yaml` (kind: project)."
+    }
+  }
+}
