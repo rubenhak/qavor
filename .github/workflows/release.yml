@@ -83,8 +83,8 @@ jobs:
 
       # Trusted publishing requires npm CLI >= 11.5.1; registry often returns misleading 404 / ENEEDAUTH
       # if the CLI is too old (github.com/npm/cli/issues/9088).
-      - name: Upgrade npm for Trusted Publishing (OIDC)
-        run: npm install -g npm@^11.6.2
+      # - name: Upgrade npm for Trusted Publishing (OIDC)
+        # run: npm install -g npm@^11.6.2
 
       # pnpm runs a separate OIDC token exchange (ERR_PNPM_AUTH_TOKEN_EXCHANGE / 404) that often
       # fails even when Trusted Publishing + npm are correct; npm publish uses npm's OIDC path.
@@ -97,9 +97,9 @@ jobs:
           NPM_CONFIG_PROVENANCE: "true"
         run: |
           echo "OIDC available: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes (URL set)}"
-          NPMRC=$(mktemp)
-          echo 'registry=https://registry.npmjs.org/' > "${NPMRC}"
-          export NPM_CONFIG_USERCONFIG="${NPMRC}"
+          # NPMRC=$(mktemp)
+          # echo 'registry=https://registry.npmjs.org/' > "${NPMRC}"
+          # export NPM_CONFIG_USERCONFIG="${NPMRC}"
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
           echo "Publishing ${PKG}@${VERSION}..."
