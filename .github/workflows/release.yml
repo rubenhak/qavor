@@ -1,8 +1,8 @@
 name: Manual Release
 
-# Bumps package.json, runs the full CI gate, then commits + tags + pushes.
-# The resulting v* tag triggers publish.yml, which handles npm publishing.
-# Typical use: Actions → Release → Run workflow → choose semver bump → Run workflow.
+# Bumps package.json, runs the full CI gate, commits + tags + pushes, then
+# chains into publish.yml (workflow_call) to publish to npm.
+# Typical use: Actions → Manual Release → Run workflow → choose semver bump → Run workflow.
 on:
   workflow_dispatch:
     inputs:
@@ -69,3 +69,10 @@ jobs:
           git tag "v${VERSION}"
           git push origin HEAD:"${BRANCH_NAME}"
           git push origin "v${VERSION}"
+
+  publish:
+    needs: release
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/publish.yml
