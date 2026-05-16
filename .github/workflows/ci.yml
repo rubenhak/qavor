@@ -13,7 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # Trusted publishing → npmjs (OIDC); only used on tag pushes
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,7 +24,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          registry-url: 'https://registry.npmjs.org'
           cache: pnpm
 
       - name: Install dependencies
@@ -42,20 +40,3 @@ jobs:
 
       - name: Test
         run: pnpm test
-
-      # Trusted publishing requires npm CLI ≥ 11.5.1; Node may ship older npm.
-      - name: Align npm CLI for OIDC publishing
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        run: npm install -g npm@^11.5.1
-
-      # Authentication is via OIDC (no NPM_TOKEN); configure Trusted Publisher → workflow file ci.yml on npmjs.
-      - name: Publish to npm
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        run: |
-          PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
-          VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
-          if npm view "${PKG}@${VERSION}" version >/dev/null 2>&1; then
-            echo "${PKG}@${VERSION} is already published; skipping."
-            exit 0
-          fi
-          pnpm publish --access public --no-git-checks
