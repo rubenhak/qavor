@@ -2,6 +2,8 @@ name: Release
 
 # Manual version bump + publish. Uses npm Trusted Publishing (OIDC); register this
 # workflow file on npmjs (package → Publishing → Trusted Publishers).
+# The publish step uses `npm publish` (not `pnpm publish`): pnpm’s own OIDC exchange
+# often fails with 404; npm CLI runs the supported token exchange (pnpm/pnpm#9812).
 # If npm requires a GitHub Environment, add `environment: <name>` on the job below
 # so OIDC claims match the Trusted Publisher entry.
 #
@@ -81,6 +83,8 @@ jobs:
       - name: Upgrade npm for Trusted Publishing (OIDC)
         run: npm install -g npm@^11.6.2
 
+      # pnpm runs a separate OIDC token exchange (ERR_PNPM_AUTH_TOKEN_EXCHANGE / 404) that often
+      # fails even when Trusted Publishing + npm are correct; npm publish uses npm's OIDC path.
       - name: Publish to npm
         env:
           NPM_CONFIG_PROVENANCE: true
@@ -90,7 +94,8 @@ jobs:
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
           echo "Publishing ${PKG}@${VERSION}..."
-          pnpm publish --access public --no-git-checks
+          # pnpm publish --access public --no-git-checks
+          npm publish --access public
 
       - name: Commit version bump and push branch + release tag
         env:
