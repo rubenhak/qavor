@@ -89,17 +89,21 @@ jobs:
       # pnpm runs a separate OIDC token exchange (ERR_PNPM_AUTH_TOKEN_EXCHANGE / 404) that often
       # fails even when Trusted Publishing + npm are correct; npm publish uses npm's OIDC path.
       #
-      # setup-node sets NPM_CONFIG_USERCONFIG to a temp .npmrc containing `_authToken=${NODE_AUTH_TOKEN}`.
-      # Unsetting NPM_CONFIG_USERCONFIG makes npm fall back to ~/.npmrc (no _authToken), which causes
-      # it to detect the OIDC environment and attempt the token exchange instead of throwing ENEEDAUTH.
+      # setup-node exports NPM_CONFIG_USERCONFIG pointing to a temp .npmrc with _authToken=${NODE_AUTH_TOKEN}.
+      # pnpm/action-setup may also write to ~/.npmrc. We create a fresh minimal .npmrc and export
+      # NPM_CONFIG_USERCONFIG to it inside the run script so npm has no _authToken and falls through to OIDC.
       - name: Publish to npm
         env:
-          NPM_CONFIG_PROVENANCE: true
+          NPM_CONFIG_PROVENANCE: "true"
         run: |
+          echo "OIDC available: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes (URL set)}"
+          NPMRC=$(mktemp)
+          echo 'registry=https://registry.npmjs.org/' > "${NPMRC}"
+          export NPM_CONFIG_USERCONFIG="${NPMRC}"
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
           echo "Publishing ${PKG}@${VERSION}..."
-          env -u NPM_CONFIG_USERCONFIG npm publish --access public
+          npm publish --access public
 
       - name: Commit version bump and push branch + release tag
         env:
