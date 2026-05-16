@@ -67,6 +67,8 @@ jobs:
       #   run: npm install -g npm@^11.5.1
 
       - name: Publish to npm
+        env:
+          NPM_CONFIG_PROVENANCE: true      
         run: |
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
