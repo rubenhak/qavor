@@ -1,0 +1,48 @@
+name: Publish
+
+# Triggered by v* tags created by release.yml.
+# Uses npm Trusted Publishing (OIDC) — register this workflow file on npmjs:
+# package → Publishing → Trusted Publishers → GitHub Actions → workflow: publish.yml
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Publish to npm
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          VERSION="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")"
+          echo "Publishing qavor@${VERSION}..."
+          pnpm publish --no-git-checks

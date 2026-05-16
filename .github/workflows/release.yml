@@ -1,23 +1,19 @@
-name: Release
+name: Manual Release
 
-# Manual version bump + publish. Uses npm Trusted Publishing (OIDC); register this
-# workflow file on npmjs (package → Publishing → Trusted Publishers).
+# Bumps package.json, runs the full CI gate, then commits + tags + pushes.
+# The resulting v* tag triggers publish.yml, which handles npm publishing.
 # Typical use: Actions → Release → Run workflow → choose semver bump → Run workflow.
 on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Semver bump (updates package.json only; tag is always v<x.y.z>)
+        description: Semver bump (patch / minor / major)
         required: true
         type: choice
         options:
           - patch
           - minor
           - major
-
-permissions:
-  contents: write # commit + push version bump + tag
-  id-token: write # Trusted publishing → npmjs (OIDC)
 
 concurrency:
   group: release
@@ -26,6 +22,10 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -38,17 +38,6 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-
-      - name: Check Versions
-        env:
-          NPM_CONFIG_PROVENANCE: true
-        run: |
-          echo "Node Version:"
-          node --version
-          echo "Pnpm Version:"
-          pnpm --version
-          echo "NPM Version:"
-          npm --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -67,22 +56,12 @@ jobs:
 
       - name: Test
         run: pnpm test
-        
-      - name: Publish to npm
-        env:
-          NPM_CONFIG_PROVENANCE: "true"
-        run: |
-          echo "OIDC available: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes (URL set)}"
-          PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
-          VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
-          echo "Publishing ${PKG}@${VERSION}..."
-          pnpm publish --access public --no-git-checks
 
-      - name: Commit version bump and push branch + release tag
+      - name: Commit, tag, and push
         env:
           BRANCH_NAME: ${{ github.ref_name }}
         run: |
-          VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
+          VERSION="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")"
           git config user.name "github-actions[bot]"
           git config user.email "ci@users.noreply.github.com"
           git add package.json
