@@ -2,6 +2,8 @@ name: Release
 
 # Manual version bump + publish. Uses npm Trusted Publishing (OIDC); register this
 # workflow file on npmjs (package → Publishing → Trusted Publishers).
+# If npm requires a GitHub Environment, add `environment: <name>` on the job below
+# so OIDC claims match the Trusted Publisher entry.
 #
 # Typical use: Actions → Release → Run workflow → choose semver bump → Run workflow.
 on:
@@ -31,11 +33,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # Omit registry-url: it makes setup-node export a sentinel NODE_AUTH_TOKEN / .npmrc
+      # _authToken and breaks npm/pnpm Trusted Publishing (OIDC); exchange then fails with 404.
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
 
       - name: Install pnpm
@@ -43,7 +46,7 @@ jobs:
 
       - name: Check Versions
         env:
-          NPM_CONFIG_PROVENANCE: true      
+          NPM_CONFIG_PROVENANCE: true
         run: |
           echo "Node Version:"
           node --version
@@ -73,19 +76,20 @@ jobs:
       # - name: Test
       #   run: pnpm test
 
-      # Trusted publishing requires npm CLI >= 11.5.1 (bundled npm on older Node 22.x may be too old).
-      # - name: Upgrade npm for Trusted Publishing (OIDC)
-      #   run: npm install -g npm@^11.5.1
+      # Trusted publishing requires npm CLI >= 11.5.1; registry often returns misleading 404 / ENEEDAUTH
+      # if the CLI is too old (github.com/npm/cli/issues/9088).
+      - name: Upgrade npm for Trusted Publishing (OIDC)
+        run: npm install -g npm@^11.6.2
 
       - name: Publish to npm
         env:
-          NPM_CONFIG_PROVENANCE: true      
+          NPM_CONFIG_PROVENANCE: true
+          # Explicit empty token so OIDC runs; see github.com/actions/setup-node/issues/1440
+          NODE_AUTH_TOKEN: ""
         run: |
           PKG="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name)")"
           VERSION="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
           echo "Publishing ${PKG}@${VERSION}..."
-          # unset NODE_AUTH_TOKEN NPM_TOKEN
-          # npm publish --access public
           pnpm publish --access public --no-git-checks
 
       - name: Commit version bump and push branch + release tag
