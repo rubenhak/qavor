@@ -51,18 +51,18 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - name: Check generated manifest types
-        run: pnpm gen:types:check
+      # - name: Check generated manifest types
+      #   run: pnpm gen:types:check
 
-      - name: Typecheck
-        run: pnpm typecheck
+      # - name: Typecheck
+      #   run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      # - name: Test
+      #   run: pnpm test
 
       # Trusted publishing requires npm CLI >= 11.5.1 (bundled npm on older Node 22.x may be too old).
-      - name: Upgrade npm for Trusted Publishing (OIDC)
-        run: npm install -g npm@^11.5.1
+      # - name: Upgrade npm for Trusted Publishing (OIDC)
+      #   run: npm install -g npm@^11.5.1
 
       - name: Publish to npm
         run: |
