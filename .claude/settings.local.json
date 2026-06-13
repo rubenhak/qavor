@@ -28,7 +28,18 @@
       "Bash(node --import tsx --test --test-reporter=spec test/git.test.ts)",
       "Bash(perl -i -pe \"s/\\\\x1b/\\\\\\\\\\\\\\\\u001b/g\" test/git.test.ts)",
       "Bash(npx tsx *)",
-      "Bash(rm -f /tmp/check6.mts)"
+      "Bash(rm -f /tmp/check6.mts)",
+      "Bash(chmod +x test.sh)",
+      "Bash(./test.sh test/git.test.ts)",
+      "Bash(./test.sh --test-name-pattern='clones the repos')",
+      "Bash(./test.sh)",
+      "Bash(bash -x ./test.sh --test-name-pattern='nonexistent-zzz')",
+      "Bash(node --import tsx --test --test-reporter=spec 'test/**/*.test.ts')",
+      "Bash(node --import tsx --test --test-reporter=spec --test-name-pattern='nonexistent-zzz' 'test/**/*.test.ts')",
+      "Bash(node --import tsx --test --test-reporter=spec --test-name-pattern='clones the repos' test/git.test.ts)",
+      "Bash(node --import tsx --test --test-reporter=spec --test-name-pattern='status' test/git.test.ts test/env.test.ts)",
+      "Bash(./test.sh --test-name-pattern='status')",
+      "Bash(./test.sh --test-name-pattern='clones the repos' test/git.test.ts)"
     ]
   }
 }

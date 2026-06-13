@@ -195,6 +195,11 @@ const at = (row: number, col = 1): string => `\x1b[${row};${col}H`; // absolute 
  * can be drawn up front and animated in place at any size, then restores the
  * user's terminal (scrollback intact) and prints the final table on exit.
  *
+ * When the workspace has more repos than fit on screen, the window scrolls to
+ * follow the completion frontier — it keeps the lowest (furthest-down) updated
+ * repo visible, so you watch progress march down a large list rather than
+ * staring at a static first page.
+ *
  * Requires a known terminal size (absolute cursor positioning); callers route
  * to {@link streamingView} when dimensions are unavailable.
  */
@@ -213,14 +218,25 @@ function altScreenView(
   }));
   let done = 0;
   let frame = 0;
+  // The deepest (highest-index) repo resolved so far. The viewport scrolls to
+  // keep this row visible, so the window follows the completion frontier down
+  // the table. Monotonic, so the view only ever scrolls downward.
+  let maxResolved = -1;
+  let scrollTop = 0;
 
   // Geometry (recomputed on resize). Layout: row 1 header, rows 2..1+visible
-  // repos, row 2+visible footer. Hidden rows still resolve but aren't drawn
-  // live — they all appear in the final table after exit.
+  // repos (a scrolling window over the full list), row 2+visible footer.
   let termCols = initialCols;
   let termRows = initialRows;
   let layout = computeLayout(repoNames, termCols);
   let visible = Math.min(n, Math.max(1, termRows - 2));
+
+  // Scroll so the lowest updated repo sits at the bottom edge of the window,
+  // clamped to the list bounds. When everything fits, never scroll.
+  const desiredScroll = (): number => {
+    if (n <= visible) return 0;
+    return Math.max(0, Math.min(maxResolved - visible + 1, n - visible));
+  };
 
   const rowLine = (i: number): string => {
     const st = states[i];
@@ -234,18 +250,35 @@ function altScreenView(
   const footerLine = (): string => {
     const sp = c.cyan(spinAt(frame));
     const counter = c.bold(`${done}/${n}`);
-    const hidden = n - visible;
-    const note = hidden > 0 ? ` (+${hidden} more on exit)` : '';
-    const label = done < n ? `inspecting…${note}` : `done${note}`;
-    const prefix = sp.length + 1 + `${done}/${n}`.length + 1;
+    let label: string;
+    if (done >= n) {
+      label = 'done';
+    } else if (n > visible) {
+      const from = scrollTop + 1;
+      const to = Math.min(scrollTop + visible, n);
+      label = `inspecting… · showing ${from}–${to} of ${n}`;
+    } else {
+      label = 'inspecting…';
+    }
+    const prefix = spinAt(frame).length + 1 + `${done}/${n}`.length + 1;
     return `${sp} ${counter} ${c.dim(truncate(label, Math.max(0, termCols - prefix - 1)))}`;
   };
 
+  // Draw every row in the current window: screen row `2 + slot` shows repo
+  // `scrollTop + slot` (blank past the end of the list).
+  const drawWindow = (): string => {
+    let buf = '';
+    for (let slot = 0; slot < visible; slot++) {
+      const idx = scrollTop + slot;
+      buf += `${at(2 + slot)}\x1b[2K${idx < n ? rowLine(idx) : ''}`;
+    }
+    return buf;
+  };
+
   const fullRedraw = (): void => {
-    let buf = `${CLEAR_SCREEN}${at(1)}\x1b[2K${headerLine(c, layout)}`;
-    for (let i = 0; i < visible; i++) buf += `${at(2 + i)}\x1b[2K${rowLine(i)}`;
-    buf += `${at(2 + visible)}\x1b[2K${footerLine()}`;
-    stream.write(buf);
+    stream.write(
+      `${CLEAR_SCREEN}${at(1)}\x1b[2K${headerLine(c, layout)}${drawWindow()}${at(2 + visible)}\x1b[2K${footerLine()}`,
+    );
   };
 
   let restored = false;
@@ -263,6 +296,7 @@ function altScreenView(
     termRows = stream.rows || termRows;
     layout = computeLayout(repoNames, termCols);
     visible = Math.min(n, Math.max(1, termRows - 2));
+    scrollTop = desiredScroll();
     fullRedraw();
   };
 
@@ -279,8 +313,9 @@ function altScreenView(
     // plus the footer. No full-row or full-table repaint → minimal output.
     const spinner = c.cyan(spinAt(frame));
     let seq = '';
-    for (let i = 0; i < visible; i++) {
-      if (states[i]?.row == null) seq += at(2 + i, 1) + spinner;
+    for (let slot = 0; slot < visible; slot++) {
+      const idx = scrollTop + slot;
+      if (idx < n && states[idx]?.row == null) seq += at(2 + slot, 1) + spinner;
     }
     seq += `${at(2 + visible)}\x1b[2K${footerLine()}`;
     stream.write(seq);
@@ -293,8 +328,19 @@ function altScreenView(
       if (!st) return;
       st.row = row;
       done += 1;
+      if (index > maxResolved) maxResolved = index;
+      const newScroll = desiredScroll();
+      if (newScroll !== scrollTop) {
+        // The frontier moved into/under the window edge: scroll and repaint the
+        // whole window (the row↔screen-line mapping shifted).
+        scrollTop = newScroll;
+        stream.write(`${drawWindow()}${at(2 + visible)}\x1b[2K${footerLine()}`);
+        return;
+      }
+      // No scroll: rewrite just this row (if currently visible) + footer.
       let seq = '';
-      if (index < visible) seq += `${at(2 + index)}\x1b[2K${rowLine(index)}`;
+      const slot = index - scrollTop;
+      if (slot >= 0 && slot < visible) seq += `${at(2 + slot)}\x1b[2K${rowLine(index)}`;
       seq += `${at(2 + visible)}\x1b[2K${footerLine()}`;
       stream.write(seq);
     },

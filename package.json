@@ -28,7 +28,7 @@
     "gen:types:check": "tsx scripts/gen-types.ts --check",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "node --import tsx --test --test-reporter=spec test/**/*.test.ts",
+    "test": "./test.sh",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
