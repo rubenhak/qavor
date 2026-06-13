@@ -21,6 +21,9 @@ function buildProgram(): Command {
     .description(
       'A CLI for managing a constellation of related repositories as one cohesive developer workspace.',
     )
+    // Surface root-level flags (--json, --jobs, --serial, --parallel, …) in
+    // every subcommand's --help under a "Global Options" section. Inherited.
+    .configureHelp({ showGlobalOptions: true })
     .version(PKG_VERSION, '-V, --version')
     .option('--json', 'Emit machine-readable JSON output. One object per line on stdout.')
     .option('-v, --verbose', 'Enable debug-level logging on stderr.')
@@ -32,6 +35,8 @@ function buildProgram(): Command {
       }
       return raw;
     })
+    .option('--serial', 'Run fan-out operations one repo/service at a time.')
+    .option('--parallel', 'Run fan-out operations with bounded concurrency (see --jobs).')
     .hook('preAction', (thisCommand) => {
       const opts = thisCommand.opts();
       configureLogger({ json: Boolean(opts.json), verbose: Boolean(opts.verbose) });

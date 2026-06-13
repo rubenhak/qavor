@@ -43,6 +43,27 @@ test('qavor status: reports per-repo branch + dirty count', async () => {
   }
 });
 
+test('qavor status: human output renders a table + summary footer (ASCII fallback, no TTY)', async () => {
+  const fixtures = await buildFixtureRepos({ services: ['web'] });
+  const ws = await makeTempDir('qavor-status-human-');
+  try {
+    await runCli(['init', fixtures.projectRepo, '--into', ws]);
+    await runCli(['git', 'clone'], { cwd: ws });
+    await fs.writeFile(path.join(ws, 'web.git', 'extra.txt'), 'hello');
+    const status = await runCli(['git', 'status'], { cwd: ws });
+    assert.equal(status.exitCode, 0, `status failed: ${status.stderr}`);
+    // Non-TTY: no ANSI escapes, ASCII glyphs only.
+    assert.ok(!status.stdout.includes('\u001b['), 'piped output must not contain ANSI escapes');
+    assert.match(status.stdout, /REPO\s+BRANCH\s+SYNC\s+CHANGES\s+COMMIT\s+SUBJECT/);
+    assert.match(status.stdout, /\bweb\b.*\bmain\b/);
+    // Dirty repo shows the ASCII dirty glyph + count and the summary tallies it.
+    assert.match(status.stdout, /Summary:.*1 repo.*1 dirty/s);
+  } finally {
+    await cleanup(fixtures.base);
+    await cleanup(ws);
+  }
+});
+
 test('qavor git commit: stages and commits with -m across repos', async () => {
   const fixtures = await buildFixtureRepos({ services: ['web'] });
   const ws = await makeTempDir('qavor-commit-');

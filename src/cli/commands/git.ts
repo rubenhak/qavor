@@ -1,7 +1,6 @@
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import type { Command } from 'commander';
-import pMap from 'p-map';
 import {
   gitClone,
   gitCommit,
@@ -12,13 +11,14 @@ import {
   readRepoStatus,
 } from '../../git/git.js';
 import type { ProjectManifest } from '../../manifest/types/index.js';
-import { resolveJobs } from '../../util/concurrency.js';
+import { runFanOut } from '../../util/concurrency.js';
 import { RuntimeFailure, UserError } from '../../util/exit-codes.js';
 import { emit, emitJson, getLogger } from '../../util/logger.js';
 import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
 import { type ResolvedRepo, resolveRepos } from '../../workspace/repos.js';
-import { inheritRootOptions } from '../options.js';
+import { inheritRootOptions, resolveExecutionPlan } from '../options.js';
 import { reposPresent, selectRepos } from '../repos.js';
+import { createStatusView, type StatusRow } from './git-status-view.js';
 
 async function loadProjectRepos(): Promise<{ workspaceRoot: string; repos: ResolvedRepo[] }> {
   const ws = await resolveWorkspace();
@@ -58,27 +58,25 @@ export function registerGitCommands(program: Command): void {
     const logger = getLogger();
     const { workspaceRoot, repos } = await loadProjectRepos();
     const selected = selectRepos(repos, opts.repo);
-    const jobs = resolveJobs(root.jobs);
+    const plan = resolveExecutionPlan(root, 'parallel');
 
-    const results: {
+    type CloneResult = {
       repo: string;
       status: 'cloned' | 'present' | 'skipped' | 'failed';
       message?: string;
-    }[] = [];
-    await pMap(
+    };
+    const results = await runFanOut<ResolvedRepo, CloneResult>(
       selected,
       async (r) => {
         if (r.isProjectRepo) {
-          results.push({
+          return {
             repo: r.name,
             status: 'present',
             message: 'project repo (already cloned)',
-          });
-          return;
+          };
         }
         if (await isGitRepo(r.dir)) {
-          results.push({ repo: r.name, status: 'present' });
-          return;
+          return { repo: r.name, status: 'present' };
         }
         try {
           logger.info({ repo: r.name, url: r.url, dir: r.dir }, 'clone: starting');
@@ -91,18 +89,17 @@ export function registerGitCommands(program: Command): void {
             shallow: r.shallow,
             submodules: r.submodules,
           });
-          results.push({ repo: r.name, status: 'cloned' });
+          return { repo: r.name, status: 'cloned' };
         } catch (err) {
           if (r.optional) {
-            results.push({ repo: r.name, status: 'skipped', message: 'optional; clone failed' });
-          } else {
-            throw new RuntimeFailure(
-              `Clone failed for ${r.name}: ${err instanceof Error ? err.message : String(err)}`,
-            );
+            return { repo: r.name, status: 'skipped', message: 'optional; clone failed' };
           }
+          throw new RuntimeFailure(
+            `Clone failed for ${r.name}: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       },
-      { concurrency: jobs },
+      plan,
     );
 
     if (root.json) {
@@ -120,24 +117,23 @@ export function registerGitCommands(program: Command): void {
     const root = inheritRootOptions(cmd);
     const { repos } = await loadProjectRepos();
     const selected = await reposPresent(selectRepos(repos, opts.repo));
-    const jobs = resolveJobs(root.jobs);
-    const results: { repo: string; ok: boolean; error?: string }[] = [];
-    await pMap(
+    const plan = resolveExecutionPlan(root, 'parallel');
+    const results = await runFanOut(
       selected,
-      async (r) => {
+      async (r): Promise<{ repo: string; ok: boolean; error?: string }> => {
         try {
           await gitFetch(r.dir);
           await gitPullFastForward(r.dir);
-          results.push({ repo: r.name, ok: true });
+          return { repo: r.name, ok: true };
         } catch (err) {
-          results.push({
+          return {
             repo: r.name,
             ok: false,
             error: err instanceof Error ? err.message : String(err),
-          });
+          };
         }
       },
-      { concurrency: jobs },
+      plan,
     );
     if (root.json) {
       emitJson({ results });
@@ -154,21 +150,21 @@ export function registerGitCommands(program: Command): void {
     const root = inheritRootOptions(cmd);
     const { workspaceRoot, repos } = await loadProjectRepos();
     const selected = await reposPresent(selectRepos(repos, opts.repo));
-    const jobs = resolveJobs(root.jobs);
-    type Row = {
-      repo: string;
-      branch: string | null;
-      ahead: number;
-      behind: number;
-      dirty: number;
-      last_commit: string | null;
-      last_commit_subject: string | null;
-    };
-    const rows = await pMap(
+    const plan = resolveExecutionPlan(root, 'parallel');
+
+    // Live table on stdout: rows appear up-front with a spinner and fill in as
+    // each repo's status resolves. Auto-disabled for --json, non-TTY, and
+    // --verbose (where pino logs share the terminal); those fall back to a
+    // single static render in `finish`.
+    const view = createStatusView(
+      selected.map((r) => r.name),
+      { enabled: !root.json && !root.verbose },
+    );
+    const rows = await runFanOut(
       selected,
-      async (r): Promise<Row> => {
+      async (r, index): Promise<StatusRow> => {
         const s = await readRepoStatus(r.dir);
-        return {
+        const row: StatusRow = {
           repo: r.name,
           branch: s.branch,
           ahead: s.ahead,
@@ -177,30 +173,16 @@ export function registerGitCommands(program: Command): void {
           last_commit: s.lastCommit,
           last_commit_subject: s.lastCommitSubject,
         };
+        view.resolve(index, row);
+        return row;
       },
-      { concurrency: jobs },
+      plan,
     );
     if (root.json) {
       emitJson({ workspace: workspaceRoot, repos: rows });
       return;
     }
-    // simple table
-    const headers = ['REPO', 'BRANCH', 'AHEAD', 'BEHIND', 'DIRTY', 'COMMIT', 'SUBJECT'];
-    const data = rows.map((r) => [
-      r.repo,
-      r.branch ?? '-',
-      String(r.ahead),
-      String(r.behind),
-      String(r.dirty),
-      r.last_commit ?? '-',
-      (r.last_commit_subject ?? '').split('\n')[0]?.slice(0, 60) ?? '',
-    ]);
-    const widths = headers.map((h, i) =>
-      Math.max(h.length, ...data.map((row) => (row[i] ?? '').length)),
-    );
-    const fmt = (row: string[]): string => row.map((c, i) => c.padEnd(widths[i] ?? 0)).join('  ');
-    emit(fmt(headers));
-    for (const row of data) emit(fmt(row));
+    view.finish(rows);
   });
 
   repoOption(
@@ -232,27 +214,28 @@ export function registerGitCommands(program: Command): void {
       }
       const { repos } = await loadProjectRepos();
       const selected = await reposPresent(selectRepos(repos, opts.repo));
-      const jobs = resolveJobs(root.jobs);
-      const results: { repo: string; committed: boolean; error?: string }[] = [];
-      await pMap(
+      // Commits mutate working trees and may fire pre-commit hooks that share
+      // caches, so default to serial; users opt into `--parallel` explicitly.
+      const plan = resolveExecutionPlan(root, 'serial');
+      const results = await runFanOut(
         selected,
-        async (r) => {
+        async (r): Promise<{ repo: string; committed: boolean; error?: string }> => {
           try {
             const res = await gitCommit(r.dir, message, {
               allowEmpty: Boolean(opts.allowEmpty),
               files,
               noVerify: opts.verify === false,
             });
-            results.push({ repo: r.name, committed: res.committed });
+            return { repo: r.name, committed: res.committed };
           } catch (err) {
-            results.push({
+            return {
               repo: r.name,
               committed: false,
               error: err instanceof Error ? err.message : String(err),
-            });
+            };
           }
         },
-        { concurrency: jobs },
+        plan,
       );
       if (root.json) {
         emitJson({ results });
@@ -272,23 +255,22 @@ export function registerGitCommands(program: Command): void {
     const root = inheritRootOptions(cmd);
     const { repos } = await loadProjectRepos();
     const selected = await reposPresent(selectRepos(repos, opts.repo));
-    const jobs = resolveJobs(root.jobs);
-    const results: { repo: string; ok: boolean; error?: string }[] = [];
-    await pMap(
+    const plan = resolveExecutionPlan(root, 'parallel');
+    const results = await runFanOut(
       selected,
-      async (r) => {
+      async (r): Promise<{ repo: string; ok: boolean; error?: string }> => {
         try {
           await gitPush(r.dir);
-          results.push({ repo: r.name, ok: true });
+          return { repo: r.name, ok: true };
         } catch (err) {
-          results.push({
+          return {
             repo: r.name,
             ok: false,
             error: err instanceof Error ? err.message : String(err),
-          });
+          };
         }
       },
-      { concurrency: jobs },
+      plan,
     );
     if (root.json) {
       emitJson({ results });

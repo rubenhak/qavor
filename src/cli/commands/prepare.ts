@@ -1,17 +1,16 @@
 import type { Command } from 'commander';
-import pMap from 'p-map';
 import { parseCliEnv } from '../../env/composer.js';
 import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
 import type { LoadedDocument } from '../../manifest/loader.js';
 import { loadManifestFile } from '../../manifest/loader.js';
 import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
 import { prepareService } from '../../prepare/prepare.js';
-import { resolveJobs } from '../../util/concurrency.js';
+import { runFanOut } from '../../util/concurrency.js';
 import { UserError } from '../../util/exit-codes.js';
 import { emit, emitJson, getLogger } from '../../util/logger.js';
 import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
 import { resolveRepos } from '../../workspace/repos.js';
-import { inheritRootOptions } from '../options.js';
+import { inheritRootOptions, resolveExecutionPlan } from '../options.js';
 import { selectRepos } from '../repos.js';
 
 export function registerPrepare(program: Command): void {
@@ -28,6 +27,7 @@ export function registerPrepare(program: Command): void {
         cmd: Command,
       ) => {
         const root = inheritRootOptions(cmd);
+        const plan = resolveExecutionPlan(root, 'parallel');
         const logger = getLogger();
         const ws = await resolveWorkspace();
         const projectDoc = await readProjectManifest(ws.projectManifestFile);
@@ -43,7 +43,7 @@ export function registerPrepare(program: Command): void {
         const registry = await buildWorkspaceRegistry({
           workspaceRoot: ws.paths.root,
           repos: repoMap,
-          concurrency: resolveJobs(root.jobs),
+          concurrency: plan.concurrency,
         });
 
         for (const issue of registry.issues) {
@@ -64,9 +64,8 @@ export function registerPrepare(program: Command): void {
         }
 
         const cliEnv = opts.env ? parseCliEnv(opts.env) : undefined;
-        const jobs = resolveJobs(root.jobs);
 
-        const results = await pMap(
+        const results = await runFanOut(
           services,
           async (entry) => {
             const docs = await loadManifestFile(entry.file);
@@ -82,7 +81,7 @@ export function registerPrepare(program: Command): void {
             if (cliEnv) prepareOpts.cliEnv = cliEnv;
             return prepareService(prepareOpts);
           },
-          { concurrency: jobs },
+          plan,
         );
 
         if (root.json) {

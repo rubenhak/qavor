@@ -1,10 +1,9 @@
 import path from 'node:path';
 import type { Command } from 'commander';
-import { resolveJobs } from '../../util/concurrency.js';
 import { emit, emitJson } from '../../util/logger.js';
 import { discoverRepos } from '../../workspace/discover.js';
 import { resolveWorkspace } from '../../workspace/locate.js';
-import { inheritRootOptions } from '../options.js';
+import { inheritRootOptions, resolveExecutionPlan } from '../options.js';
 
 export function registerDiscover(program: Command): void {
   program
@@ -17,8 +16,8 @@ export function registerDiscover(program: Command): void {
       const root = inheritRootOptions(cmd);
       const dryRun = Boolean(opts.dryRun);
       const ws = await resolveWorkspace();
-      const jobs = resolveJobs(root.jobs);
-      const result = await discoverRepos({ workspace: ws, dryRun, concurrency: jobs });
+      const plan = resolveExecutionPlan(root, 'parallel');
+      const result = await discoverRepos({ workspace: ws, dryRun, concurrency: plan.concurrency });
 
       if (root.json) {
         emitJson({

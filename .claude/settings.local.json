@@ -21,7 +21,12 @@
       "Bash(sed -n '350,360p' docs/proposal.md)",
       "Bash(sed -n '188,196p' docs/proposal.md)",
       "Bash(sed -n '170,182p' docs/mvp-tasks.md)",
-      "Bash(node --import tsx --test test/git.test.ts)"
+      "Bash(node --import tsx --test test/git.test.ts)",
+      "Bash(pnpm format *)",
+      "Bash(pnpm dev *)",
+      "Bash(perl -i -pe 's/\\\\x1b/\\\\\\\\x1b/g' src/util/style.ts)",
+      "Bash(node --import tsx --test --test-reporter=spec test/git.test.ts)",
+      "Bash(perl -i -pe \"s/\\\\x1b/\\\\\\\\\\\\\\\\u001b/g\" test/git.test.ts)"
     ]
   }
 }
