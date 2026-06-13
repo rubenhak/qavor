@@ -11,7 +11,12 @@
       "Bash(pnpm typecheck *)",
       "Bash(pnpm test *)",
       "Bash(bash ./lint.sh)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(cp /tmp/yamltest.mjs ./yamltest.mjs)",
+      "Bash(node --import tsx ./yamltest.mjs)",
+      "Bash(rm -f ./yamltest.mjs)",
+      "Bash(./lint.sh)",
+      "Bash(node --import tsx --test test/discover.test.ts)"
     ]
   }
 }

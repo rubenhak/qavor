@@ -1,5 +1,6 @@
 import process from 'node:process';
 import { Command } from 'commander';
+import { registerDiscover } from './cli/commands/discover.js';
 import { registerDoctor } from './cli/commands/doctor.js';
 import { registerEnv } from './cli/commands/env.js';
 import { registerGitCommands } from './cli/commands/git.js';
@@ -36,6 +37,7 @@ function buildProgram(): Command {
       configureLogger({ json: Boolean(opts.json), verbose: Boolean(opts.verbose) });
     });
   registerInit(program);
+  registerDiscover(program);
   registerWorkspace(program);
   registerValidate(program);
   registerGitCommands(program);

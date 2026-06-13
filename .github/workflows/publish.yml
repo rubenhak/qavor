@@ -60,4 +60,5 @@ jobs:
             echo "| **Package** | [\`${PKG}\`](https://www.npmjs.com/package/${PKG}) |"
             echo "| **Version** | [\`${VERSION}\`](https://www.npmjs.com/package/${PKG}/v/${VERSION}) |"
             echo "| **Tag** | \`${{ github.ref_name }}\` |"
+            echo "| **npm** | https://www.npmjs.com/package/${PKG}/v/${VERSION} |"
           } >> "$GITHUB_STEP_SUMMARY"
