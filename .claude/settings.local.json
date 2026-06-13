@@ -16,7 +16,12 @@
       "Bash(node --import tsx ./yamltest.mjs)",
       "Bash(rm -f ./yamltest.mjs)",
       "Bash(./lint.sh)",
-      "Bash(node --import tsx --test test/discover.test.ts)"
+      "Bash(node --import tsx --test test/discover.test.ts)",
+      "Bash(sed -n '50,70p' README.md)",
+      "Bash(sed -n '350,360p' docs/proposal.md)",
+      "Bash(sed -n '188,196p' docs/proposal.md)",
+      "Bash(sed -n '170,182p' docs/mvp-tasks.md)",
+      "Bash(node --import tsx --test test/git.test.ts)"
     ]
   }
 }

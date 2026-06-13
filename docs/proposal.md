@@ -354,7 +354,7 @@ env:
 ## 8. CLI Surface (illustrative)
 
 - `qavor init <project-repo-url-or-path>`, `qavor workspace ...`
-- `qavor clone | sync | status | commit | push | branch | pr` (all accept selectors)
+- `qavor git clone | sync | status | commit | push | branch | pr` (all accept selectors)
 - `qavor prepare`, `qavor doctor`
 - `qavor up`, `qavor down`, `qavor restart`, `qavor logs`, `qavor ps`
 - `qavor build`, `qavor run`

@@ -156,7 +156,7 @@ export async function gitPullFastForward(dir: string, signal?: AbortSignal): Pro
 export async function gitCommit(
   dir: string,
   message: string,
-  opts: { allowEmpty?: boolean; signal?: AbortSignal } = {},
+  opts: { allowEmpty?: boolean; files?: string[]; noVerify?: boolean; signal?: AbortSignal } = {},
 ): Promise<{ committed: boolean }> {
   const status = await runGit(['status', '--porcelain'], { cwd: dir });
   if (status.trim().length === 0 && !opts.allowEmpty) {
@@ -164,9 +164,15 @@ export async function gitCommit(
   }
   const addOpts: GitRunOptions = { cwd: dir };
   if (opts.signal) addOpts.signal = opts.signal;
-  await runGit(['add', '-A'], addOpts);
+  // Stage only the requested paths when given; otherwise stage everything.
+  if (opts.files && opts.files.length > 0) {
+    await runGit(['add', '--', ...opts.files], addOpts);
+  } else {
+    await runGit(['add', '-A'], addOpts);
+  }
   const args = ['commit', '-m', message];
   if (opts.allowEmpty) args.push('--allow-empty');
+  if (opts.noVerify) args.push('--no-verify');
   const commitOpts: GitRunOptions = { cwd: dir };
   if (opts.signal) commitOpts.signal = opts.signal;
   await runGit(args, commitOpts);

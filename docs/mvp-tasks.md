@@ -55,11 +55,11 @@ No groups (selectors), no cross-service graph orchestration, no docker mode, no 
 > Selectors land in v0.5; MVP ships only `--repo <name>` and "all repos" forms. "All repos" = the union of the project manifest's `repositories:` list.
 
 - [ ] **D1.** Asynchronous subprocess wrapper around `git` built on `execa`, with streaming stdout/stderr capture, structured error parsing, and AbortSignal support for cancellation. Use `simple-git` for read-only inspection (status, ahead/behind) where it materially simplifies parsing.
-- [ ] **D2.** `qavor clone` — clone every repo in the project manifest. URL is derived from `git.root_url` + `git.repo_prefix` + `<name>` unless an explicit `url` is given on the entry. Branch comes from per-entry `branch` / `tag` / `commit` else `git.default_branch`. Clone path is `<workspace-root>/<name>.git/` unless overridden by `path`. Idempotent (skip if present, fast-path).
-- [ ] **D3.** `qavor sync` — `git fetch && git pull --ff-only` per repo. Reports per-repo result and summary.
-- [ ] **D4.** `qavor status` — aggregated table: repo, branch, ahead/behind, dirty count, last commit (short).
-- [ ] **D5.** `qavor commit -m <msg>` — commit pending changes per repo (skips clean repos). Optionally `--allow-empty`. No multi-message wizardry in MVP.
-- [ ] **D6.** `qavor push` — `git push` per repo with current branch. No PR creation (deferred to v0.5+).
+- [ ] **D2.** `qavor git clone` — clone every repo in the project manifest. URL is derived from `git.root_url` + `git.repo_prefix` + `<name>` unless an explicit `url` is given on the entry. Branch comes from per-entry `branch` / `tag` / `commit` else `git.default_branch`. Clone path is `<workspace-root>/<name>.git/` unless overridden by `path`. Idempotent (skip if present, fast-path).
+- [ ] **D3.** `qavor git sync` — `git fetch && git pull --ff-only` per repo. Reports per-repo result and summary.
+- [ ] **D4.** `qavor git status` — aggregated table: repo, branch, ahead/behind, dirty count, last commit (short).
+- [ ] **D5.** `qavor git commit -m <msg>` — commit pending changes per repo (skips clean repos). Optionally `--allow-empty`. No multi-message wizardry in MVP.
+- [ ] **D6.** `qavor git push` — `git push` per repo with current branch. No PR creation (deferred to v0.5+).
 - [ ] **D7.** Bounded parallelism via `p-queue` (default concurrency = `os.availableParallelism()`, override with `--jobs N`). Per-repo progress lines via the shared logger, buffered per repo so output is never interleaved. Honour `--jobs 1` for deterministic CI runs.
 - [ ] **D8.** Tests against a local `file://` remote fixture; cover happy path + dirty + ahead/behind cases; cover URL derivation from `repo_prefix` and explicit-`url` overrides.
 
@@ -170,13 +170,13 @@ brew install <org>/tap/qavor
 qavor init https://example.com/acme/acme-platform.git --into ./acme   # clones the project repo
 cd ./acme
 qavor doctor                                                          # all green
-qavor clone                                                           # 3 repos cloned per project manifest
+qavor git clone                                                       # 3 repos cloned per project manifest
 qavor prepare                                                         # node + uv installs via runtime.native.prepare
 qavor env auth                                                        # see resolved env w/ provenance
 qavor up auth                                                         # runtime.native.run.cmd launched, PID tracked
 qavor logs auth -f                                                    # tails output
 qavor down auth                                                       # graceful stop
-qavor status                                                          # aggregated repo state
+qavor git status                                                      # aggregated repo state
 ```
 
 If every step above passes on darwin/arm64 and linux/amd64, MVP ships.

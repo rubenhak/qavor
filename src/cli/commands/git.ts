@@ -1,4 +1,5 @@
 import path from 'node:path';
+import readline from 'node:readline/promises';
 import type { Command } from 'commander';
 import pMap from 'p-map';
 import {
@@ -34,9 +35,24 @@ function repoOption(c: Command): Command {
   return c.option('--repo <name...>', 'Operate on a subset of repos by name.');
 }
 
+/**
+ * Read a single line from the user interactively. Prompts on stderr so stdout
+ * stays reserved for command output / `--json`.
+ */
+async function promptLine(question: string): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    return (await rl.question(question)).trim();
+  } finally {
+    rl.close();
+  }
+}
+
 export function registerGitCommands(program: Command): void {
+  const git = program.command('git').description('Per-repo git operations across the workspace.');
+
   repoOption(
-    program.command('clone').description('Clone every repo enumerated in the project manifest.'),
+    git.command('clone').description('Clone every repo enumerated in the project manifest.'),
   ).action(async (opts: { repo?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const logger = getLogger();
@@ -99,9 +115,7 @@ export function registerGitCommands(program: Command): void {
   });
 
   repoOption(
-    program
-      .command('sync')
-      .description('Run `git fetch && git pull --ff-only` across selected repos.'),
+    git.command('sync').description('Run `git fetch && git pull --ff-only` across selected repos.'),
   ).action(async (opts: { repo?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const { repos } = await loadProjectRepos();
@@ -135,7 +149,7 @@ export function registerGitCommands(program: Command): void {
   });
 
   repoOption(
-    program.command('status').description('Aggregated repo status across selected repos.'),
+    git.command('status').description('Aggregated repo status across selected repos.'),
   ).action(async (opts: { repo?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const { workspaceRoot, repos } = await loadProjectRepos();
@@ -190,16 +204,31 @@ export function registerGitCommands(program: Command): void {
   });
 
   repoOption(
-    program
+    git
       .command('commit')
-      .description('Commit pending changes across selected repos.')
-      .requiredOption('-m, --message <msg>', 'Commit message.')
-      .option('--allow-empty', 'Allow empty commits.'),
+      .description('Stage changes and commit across selected repos.')
+      .argument('[files...]', 'Specific files to stage (default: all changes).')
+      .option('-m, --message <msg>', 'Commit message. Prompted for interactively if omitted.')
+      .option('--allow-empty', 'Allow empty commits.')
+      .option('--no-verify', 'Bypass pre-commit and commit-msg hooks.'),
   ).action(
-    async (opts: { repo?: string[]; message: string; allowEmpty?: boolean }, cmd: Command) => {
+    async (
+      files: string[],
+      opts: { repo?: string[]; message?: string; allowEmpty?: boolean; verify?: boolean },
+      cmd: Command,
+    ) => {
       const root = inheritRootOptions(cmd);
-      if (!opts.message || opts.message.trim().length === 0) {
-        throw new UserError(`Commit message must not be empty.`);
+      let message = opts.message?.trim() ?? '';
+      if (message.length === 0) {
+        if (root.json || !process.stdin.isTTY) {
+          throw new UserError(
+            'Commit message required: pass -m <msg> (no interactive TTY available).',
+          );
+        }
+        message = await promptLine('Commit message: ');
+        if (message.length === 0) {
+          throw new UserError('Commit message must not be empty.');
+        }
       }
       const { repos } = await loadProjectRepos();
       const selected = await reposPresent(selectRepos(repos, opts.repo));
@@ -209,8 +238,10 @@ export function registerGitCommands(program: Command): void {
         selected,
         async (r) => {
           try {
-            const res = await gitCommit(r.dir, opts.message, {
+            const res = await gitCommit(r.dir, message, {
               allowEmpty: Boolean(opts.allowEmpty),
+              files,
+              noVerify: opts.verify === false,
             });
             results.push({ repo: r.name, committed: res.committed });
           } catch (err) {
@@ -236,7 +267,7 @@ export function registerGitCommands(program: Command): void {
   );
 
   repoOption(
-    program.command('push').description('git push the current branch across selected repos.'),
+    git.command('push').description('git push the current branch across selected repos.'),
   ).action(async (opts: { repo?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const { repos } = await loadProjectRepos();

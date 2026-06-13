@@ -9,7 +9,7 @@ test('qavor prepare: runs prepare cmd; --force re-runs even on cache hit', async
   const ws = await makeTempDir('qavor-prep-');
   try {
     await runCli(['init', fixtures.projectRepo, '--into', ws]);
-    await runCli(['clone'], { cwd: ws });
+    await runCli(['git', 'clone'], { cwd: ws });
     const first = await runCli(['prepare', '--json'], { cwd: ws });
     assert.equal(first.exitCode, 0, `prepare failed: ${first.stderr}`);
     const firstParsed = JSON.parse(first.stdout);

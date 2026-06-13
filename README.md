@@ -56,14 +56,14 @@ A published `@qavor/qavor` npm package and per-platform Single Executable Applic
 ```bash
 qavor init <project-repo-url-or-path>   # writes the workspaces pointer + .qavor/
 qavor doctor                            # verify toolchains, check_installed cmds
-qavor clone                             # clone every repo from the project manifest
+qavor git clone                         # clone every repo from the project manifest
+qavor git status                        # aggregated repo state across all clones
 qavor prepare                           # run runtime.native.prepare for every service
 qavor env auth                          # resolved env with provenance
 qavor up auth                           # spawn the service under qavor's supervisor
 qavor logs auth -f                      # tail rotated logs from .qavor/logs/auth/
 qavor ps                                # liveness + uptime of tracked services
 qavor down auth                         # graceful SIGTERM then SIGKILL
-qavor status                            # aggregated repo state across all clones
 ```
 
 All multi-repo verbs accept `--repo <name...>` selectors today. Group selectors, filter flags, docker mode, stateful services, profiles, and the dependency graph are deferred per [`docs/mvp-tasks.md`](./docs/mvp-tasks.md).

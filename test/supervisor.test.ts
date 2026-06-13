@@ -14,7 +14,7 @@ test('qavor up/ps/down: lifecycle works against the auth fixture', async () => {
   try {
     const init = await runCli(['init', fixtures.projectRepo, '--into', ws]);
     assert.equal(init.exitCode, 0);
-    const clone = await runCli(['clone'], { cwd: ws });
+    const clone = await runCli(['git', 'clone'], { cwd: ws });
     assert.equal(clone.exitCode, 0);
     const up = await runCli(['up', 'auth', '--json'], { cwd: ws });
     assert.equal(up.exitCode, 0, `up failed: ${up.stderr}`);
@@ -51,7 +51,7 @@ test('qavor up: refuses if a service has no runtime.native.run.cmd', async () =>
   const ws = await makeTempDir('qavor-norun-');
   try {
     await runCli(['init', fixtures.projectRepo, '--into', ws]);
-    await runCli(['clone'], { cwd: ws });
+    await runCli(['git', 'clone'], { cwd: ws });
     // Overwrite web's manifest to disable native run.
     const webManifest = path.join(ws, 'web.git', 'qavor.yaml');
     await fs.writeFile(
