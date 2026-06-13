@@ -163,42 +163,171 @@ function renderStatic(rows: StatusRow[]): void {
   for (const line of summaryLines(rows, c)) emit(line);
 }
 
-// Carriage-return + clear-to-end-of-line: resets the current (transient)
-// status line in place without touching anything above it.
-const CLEAR_LINE = '\r\x1b[2K';
+/** Build the 7 exact-width cells for a not-yet-resolved row (spinner + name). */
+function pendingCells(repo: string, icon: string, c: Palette, layout: Layout): string[] {
+  const dim = (text: string, w: number): string => c.dim(fit(text, w));
+  return [
+    icon,
+    c.bold(fit(repo, layout.repoW)),
+    dim('', BRANCH_W),
+    dim('·', SYNC_W),
+    dim('', CHANGES_W),
+    dim('', COMMIT_W),
+    c.dim(fit('checking…', layout.subjectW)),
+  ];
+}
 
-export function createStatusView(repoNames: string[], opts: { enabled: boolean }): StatusView {
-  const n = repoNames.length;
-  const interactive = opts.enabled && process.stdout.isTTY === true && n > 0;
+const SPINNER_FRAMES = SPINNER_UNICODE.length;
+const spinAt = (frame: number): string => SPINNER_UNICODE[frame % SPINNER_FRAMES] ?? '';
+const ALT_FRAME_MS = 90;
 
-  if (!interactive) {
-    return {
-      resolve() {},
-      finish(rows) {
-        renderStatic(rows);
-      },
-    };
-  }
+// ── ANSI control sequences used by the live views ───────────────────────────
+const ALT_ENTER = '\x1b[?1049h'; // switch to the alternate screen buffer
+const ALT_LEAVE = '\x1b[?1049l'; // restore the previous screen + scrollback
+const CURSOR_HIDE = '\x1b[?25l';
+const CURSOR_SHOW = '\x1b[?25h';
+const CLEAR_SCREEN = '\x1b[2J';
+const CLEAR_LINE = '\r\x1b[2K'; // carriage-return + clear current line
+const at = (row: number, col = 1): string => `\x1b[${row};${col}H`; // absolute move
 
-  // Streaming progress: print the header once, append each repo's row the
-  // instant it resolves, and keep one animated spinner line pinned at the
-  // bottom. Only that single line is ever rewritten (via CLEAR_LINE), so this
-  // is scroll-safe for any repo count and any terminal height — completed rows
-  // become ordinary scrollback, exactly like `git clone` / `docker pull`.
-  const c = palette(true);
-  const g = glyphs(true);
+/**
+ * Alternate-screen TUI. Takes over the screen while running so the full table
+ * can be drawn up front and animated in place at any size, then restores the
+ * user's terminal (scrollback intact) and prints the final table on exit.
+ *
+ * Requires a known terminal size (absolute cursor positioning); callers route
+ * to {@link streamingView} when dimensions are unavailable.
+ */
+function altScreenView(
+  repoNames: string[],
+  c: Palette,
+  g: Glyphs,
+  initialCols: number,
+  initialRows: number,
+): StatusView {
   const stream = process.stdout;
-  const termCols = process.stdout.columns || 80;
-  const layout = computeLayout(repoNames, termCols);
+  const n = repoNames.length;
+  const states: { repo: string; row: StatusRow | null }[] = repoNames.map((repo) => ({
+    repo,
+    row: null,
+  }));
+  let done = 0;
+  let frame = 0;
 
+  // Geometry (recomputed on resize). Layout: row 1 header, rows 2..1+visible
+  // repos, row 2+visible footer. Hidden rows still resolve but aren't drawn
+  // live — they all appear in the final table after exit.
+  let termCols = initialCols;
+  let termRows = initialRows;
+  let layout = computeLayout(repoNames, termCols);
+  let visible = Math.min(n, Math.max(1, termRows - 2));
+
+  const rowLine = (i: number): string => {
+    const st = states[i];
+    if (!st) return '';
+    const cells = st.row
+      ? rowCells(st.row, c, g, layout)
+      : pendingCells(st.repo, c.cyan(spinAt(frame)), c, layout);
+    return joinCells(cells);
+  };
+
+  const footerLine = (): string => {
+    const sp = c.cyan(spinAt(frame));
+    const counter = c.bold(`${done}/${n}`);
+    const hidden = n - visible;
+    const note = hidden > 0 ? ` (+${hidden} more on exit)` : '';
+    const label = done < n ? `inspecting…${note}` : `done${note}`;
+    const prefix = sp.length + 1 + `${done}/${n}`.length + 1;
+    return `${sp} ${counter} ${c.dim(truncate(label, Math.max(0, termCols - prefix - 1)))}`;
+  };
+
+  const fullRedraw = (): void => {
+    let buf = `${CLEAR_SCREEN}${at(1)}\x1b[2K${headerLine(c, layout)}`;
+    for (let i = 0; i < visible; i++) buf += `${at(2 + i)}\x1b[2K${rowLine(i)}`;
+    buf += `${at(2 + visible)}\x1b[2K${footerLine()}`;
+    stream.write(buf);
+  };
+
+  let restored = false;
+  const restore = (): void => {
+    if (restored) return;
+    restored = true;
+    stream.write(`${ALT_LEAVE}${CURSOR_SHOW}`);
+  };
+  const onSignal = (): void => {
+    restore();
+    process.exit(130);
+  };
+  const onResize = (): void => {
+    termCols = stream.columns || termCols;
+    termRows = stream.rows || termRows;
+    layout = computeLayout(repoNames, termCols);
+    visible = Math.min(n, Math.max(1, termRows - 2));
+    fullRedraw();
+  };
+
+  stream.write(`${ALT_ENTER}${CURSOR_HIDE}`);
+  fullRedraw();
+  process.once('exit', restore);
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+  stream.on('resize', onResize);
+
+  const timer = setInterval(() => {
+    frame += 1;
+    // Repaint only the spinner glyph (column 1) of still-pending visible rows,
+    // plus the footer. No full-row or full-table repaint → minimal output.
+    const spinner = c.cyan(spinAt(frame));
+    let seq = '';
+    for (let i = 0; i < visible; i++) {
+      if (states[i]?.row == null) seq += at(2 + i, 1) + spinner;
+    }
+    seq += `${at(2 + visible)}\x1b[2K${footerLine()}`;
+    stream.write(seq);
+  }, ALT_FRAME_MS);
+  timer.unref?.();
+
+  return {
+    resolve(index, row) {
+      const st = states[index];
+      if (!st) return;
+      st.row = row;
+      done += 1;
+      let seq = '';
+      if (index < visible) seq += `${at(2 + index)}\x1b[2K${rowLine(index)}`;
+      seq += `${at(2 + visible)}\x1b[2K${footerLine()}`;
+      stream.write(seq);
+    },
+    finish(rows) {
+      clearInterval(timer);
+      stream.off('resize', onResize);
+      process.removeListener('exit', restore);
+      process.removeListener('SIGINT', onSignal);
+      process.removeListener('SIGTERM', onSignal);
+      restore(); // back to the normal screen, scrollback intact
+      renderStatic(rows); // print the complete final table into scrollback
+    },
+  };
+}
+
+/**
+ * Streaming fallback for terminals that don't report their size (absolute
+ * positioning isn't safe there). Prints the header once, appends each row as
+ * it resolves, and keeps one animated spinner line pinned at the bottom — only
+ * that line is ever rewritten, so scrollback stays clean.
+ */
+function streamingView(repoNames: string[], c: Palette, g: Glyphs, termCols: number): StatusView {
+  const stream = process.stdout;
+  const n = repoNames.length;
+  const layout = computeLayout(repoNames, termCols);
   const pending = new Set(repoNames);
   let done = 0;
   let frame = 0;
 
   const statusLine = (): string => {
-    const sp = SPINNER_UNICODE[frame % SPINNER_UNICODE.length] ?? '';
+    const sp = spinAt(frame);
     const counter = `${done}/${n}`;
-    const prefixWidth = sp.length + 1 + counter.length + 1; // "⠹ 3/7 "
+    const prefixWidth = sp.length + 1 + counter.length + 1;
     let label: string;
     if (pending.size === 0) {
       label = 'done';
@@ -215,34 +344,57 @@ export function createStatusView(repoNames: string[], opts: { enabled: boolean }
   const showCursor = (): void => {
     if (!cursorShown) {
       cursorShown = true;
-      stream.write('\x1b[?25h');
+      stream.write(CURSOR_SHOW);
     }
   };
   process.once('exit', showCursor);
 
-  // Header (permanent scrollback) + initial status line.
-  stream.write(`\x1b[?25l${headerLine(c, layout)}\n${CLEAR_LINE}${statusLine()}`);
+  stream.write(`${CURSOR_HIDE}${headerLine(c, layout)}\n${CLEAR_LINE}${statusLine()}`);
 
   const timer = setInterval(() => {
     frame += 1;
     stream.write(`${CLEAR_LINE}${statusLine()}`);
-  }, 90);
+  }, ALT_FRAME_MS);
   timer.unref?.();
 
   return {
     resolve(_index, row) {
       pending.delete(row.repo);
       done += 1;
-      const rowLine = joinCells(rowCells(row, c, g, layout));
-      // Clear the status line, emit the completed row above it, redraw status.
-      stream.write(`${CLEAR_LINE}${rowLine}\n${CLEAR_LINE}${statusLine()}`);
+      stream.write(
+        `${CLEAR_LINE}${joinCells(rowCells(row, c, g, layout))}\n${CLEAR_LINE}${statusLine()}`,
+      );
     },
     finish(rows) {
       clearInterval(timer);
-      stream.write(CLEAR_LINE); // erase the transient status line
+      stream.write(CLEAR_LINE);
       showCursor();
       process.removeListener('exit', showCursor);
       for (const line of summaryLines(rows, c)) emit(line);
     },
   };
+}
+
+export function createStatusView(repoNames: string[], opts: { enabled: boolean }): StatusView {
+  const n = repoNames.length;
+  const isTty = process.stdout.isTTY === true;
+  if (!opts.enabled || !isTty || n === 0) {
+    return {
+      resolve() {},
+      finish(rows) {
+        renderStatic(rows);
+      },
+    };
+  }
+
+  const c = palette(true);
+  const g = glyphs(true);
+  const termCols = process.stdout.columns ?? 0;
+  const termRows = process.stdout.rows ?? 0;
+  // Alternate-screen TUI when we know the geometry; otherwise stream (absolute
+  // cursor positioning needs a real size to anchor to).
+  if (termCols > 0 && termRows > 2) {
+    return altScreenView(repoNames, c, g, termCols, termRows);
+  }
+  return streamingView(repoNames, c, g, termCols || 80);
 }

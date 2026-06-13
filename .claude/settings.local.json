@@ -26,7 +26,9 @@
       "Bash(pnpm dev *)",
       "Bash(perl -i -pe 's/\\\\x1b/\\\\\\\\x1b/g' src/util/style.ts)",
       "Bash(node --import tsx --test --test-reporter=spec test/git.test.ts)",
-      "Bash(perl -i -pe \"s/\\\\x1b/\\\\\\\\\\\\\\\\u001b/g\" test/git.test.ts)"
+      "Bash(perl -i -pe \"s/\\\\x1b/\\\\\\\\\\\\\\\\u001b/g\" test/git.test.ts)",
+      "Bash(npx tsx *)",
+      "Bash(rm -f /tmp/check6.mts)"
     ]
   }
 }
