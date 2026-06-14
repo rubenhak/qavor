@@ -61,10 +61,30 @@ test('qavor status: human output renders a table + summary footer (ASCII fallbac
     assert.equal(status.exitCode, 0, `status failed: ${status.stderr}`);
     // Non-TTY + NO_COLOR: no ANSI escapes, ASCII glyphs only.
     assert.ok(!status.stdout.includes('\u001b['), 'piped output must not contain ANSI escapes');
-    assert.match(status.stdout, /REPO\s+BRANCH\s+SYNC\s+CHANGES\s+COMMIT\s+VISIBILITY\s+SUBJECT/);
+    assert.match(status.stdout, /REPO\s+BRANCH\s+SYNC\s+CHANGES\s+COMMIT\s+SUBJECT/);
+    // Visibility is opt-in: the column is absent without --show-visibility.
+    assert.ok(!status.stdout.includes('VISIBILITY'), 'VISIBILITY column should be off by default');
     assert.match(status.stdout, /\bweb\b.*\bmain\b/);
     // Dirty repo shows the ASCII dirty glyph + count and the summary tallies it.
     assert.match(status.stdout, /Summary:.*1 repo.*1 dirty/s);
+  } finally {
+    await cleanup(fixtures.base);
+    await cleanup(ws);
+  }
+});
+
+test('qavor status: --show-visibility adds the VISIBILITY column to human output', async () => {
+  const fixtures = await buildFixtureRepos({ services: ['web'] });
+  const ws = await makeTempDir('qavor-status-visibility-');
+  try {
+    await runCli(['init', fixtures.projectRepo, '--into', ws]);
+    await runCli(['git', 'clone'], { cwd: ws });
+    const status = await runCli(['git', 'status', '--show-visibility'], {
+      cwd: ws,
+      env: { NO_COLOR: '1', FORCE_COLOR: '0' },
+    });
+    assert.equal(status.exitCode, 0, `status failed: ${status.stderr}`);
+    assert.match(status.stdout, /REPO\s+BRANCH\s+SYNC\s+CHANGES\s+COMMIT\s+VISIBILITY\s+SUBJECT/);
   } finally {
     await cleanup(fixtures.base);
     await cleanup(ws);

@@ -175,9 +175,16 @@ export function registerGitCommands(program: Command): void {
   });
 
   repoOption(
-    git.command('status').description('Aggregated repo status across selected repos.'),
-  ).action(async (opts: { repo?: string[] }, cmd: Command) => {
+    git
+      .command('status')
+      .description('Aggregated repo status across selected repos.')
+      .option(
+        '--show-visibility',
+        'Include each GitHub repo’s visibility (public/private/internal) via the `gh` CLI.',
+      ),
+  ).action(async (opts: { repo?: string[]; showVisibility?: boolean }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
+    const showVisibility = Boolean(opts.showVisibility);
     const { workspaceRoot, repos } = await loadProjectRepos();
     // Keep every selected repo (not just the present ones): repos enumerated in
     // the manifest but not yet cloned are reported as `missing` rather than
@@ -191,7 +198,7 @@ export function registerGitCommands(program: Command): void {
     // single static render in `finish`.
     const view = createStatusView(
       selected.map((r) => r.name),
-      { enabled: !root.json && !root.verbose },
+      { enabled: !root.json && !root.verbose, showVisibility },
     );
     const rows = await runFanOut(
       selected,
@@ -210,7 +217,7 @@ export function registerGitCommands(program: Command): void {
             missing: true,
           };
         } else {
-          const s = await readRepoStatus(r.dir);
+          const s = await readRepoStatus(r.dir, { visibility: showVisibility });
           row = {
             repo: r.name,
             branch: s.branch,

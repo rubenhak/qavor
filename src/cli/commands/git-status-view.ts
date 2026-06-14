@@ -36,16 +36,23 @@ const CHANGES_W = 7;
 const COMMIT_W = 7;
 const VIS_W = 10;
 
-const COLUMNS: LiveColumn[] = [
-  { header: '', width: ICON_W },
-  { header: 'REPO', width: 'label' satisfies ColumnWidth },
-  { header: 'BRANCH', width: BRANCH_W },
-  { header: 'SYNC', width: SYNC_W },
-  { header: 'CHANGES', width: CHANGES_W },
-  { header: 'COMMIT', width: COMMIT_W },
-  { header: 'VISIBILITY', width: VIS_W },
-  { header: 'SUBJECT', width: 'flex' satisfies ColumnWidth },
-];
+// Columns are assembled per-view because the VISIBILITY column is opt-in (see
+// `createStatusView`). The SUBJECT (`'flex'`) column is always last, so its
+// layout index shifts by one when visibility is shown — callers read it back via
+// `subjectIndex`.
+function buildColumns(showVisibility: boolean): LiveColumn[] {
+  const cols: LiveColumn[] = [
+    { header: '', width: ICON_W },
+    { header: 'REPO', width: 'label' satisfies ColumnWidth },
+    { header: 'BRANCH', width: BRANCH_W },
+    { header: 'SYNC', width: SYNC_W },
+    { header: 'CHANGES', width: CHANGES_W },
+    { header: 'COMMIT', width: COMMIT_W },
+  ];
+  if (showVisibility) cols.push({ header: 'VISIBILITY', width: VIS_W });
+  cols.push({ header: 'SUBJECT', width: 'flex' satisfies ColumnWidth });
+  return cols;
+}
 
 /** Colorize a repo's visibility into an exact-width cell. */
 function visibilityCell(v: string | null, c: Palette): string {
@@ -56,13 +63,14 @@ function visibilityCell(v: string | null, c: Palette): string {
   return c.dim(fit(v, VIS_W));
 }
 
-/** Build the 8 exact-width, colorized cells for one resolved repo row. */
+/** Build the exact-width, colorized cells for one resolved repo row. */
 function resolvedCells(
   r: StatusRow,
   c: Palette,
   g: Glyphs,
   repoW: number,
   subjectW: number,
+  showVisibility: boolean,
 ): string[] {
   const repo = c.bold(fit(r.repo, repoW));
 
@@ -76,7 +84,7 @@ function resolvedCells(
       c.dim(fit('·', SYNC_W)),
       c.dim(fit('—', CHANGES_W)),
       c.dim(fit('—', COMMIT_W)),
-      c.dim(fit('—', VIS_W)),
+      ...(showVisibility ? [c.dim(fit('—', VIS_W))] : []),
       c.dim(fit('not cloned', subjectW)),
     ];
   }
@@ -121,18 +129,27 @@ function resolvedCells(
     ? c.yellow(fit(`${g.dirty} ${r.dirty}`, CHANGES_W))
     : c.dim(fit(g.clean, CHANGES_W));
   const commit = c.dim(fit(r.last_commit ?? '—', COMMIT_W));
-  const visibility = visibilityCell(r.visibility, c);
   const subject = fit((r.last_commit_subject ?? '').split('\n')[0] ?? '', subjectW);
-  return [icon, repo, branch, sync, changes, commit, visibility, subject];
+  return [
+    icon,
+    repo,
+    branch,
+    sync,
+    changes,
+    commit,
+    ...(showVisibility ? [visibilityCell(r.visibility, c)] : []),
+    subject,
+  ];
 }
 
-/** Build the 8 exact-width cells for a not-yet-resolved row (spinner + name). */
+/** Build the exact-width cells for a not-yet-resolved row (spinner + name). */
 function pendingCells(
   repo: string,
   spinner: string,
   c: Palette,
   repoW: number,
   subjectW: number,
+  showVisibility: boolean,
 ): string[] {
   const dim = (text: string, w: number): string => c.dim(fit(text, w));
   return [
@@ -142,38 +159,50 @@ function pendingCells(
     dim('·', SYNC_W),
     dim('', CHANGES_W),
     dim('', COMMIT_W),
-    dim('', VIS_W),
+    ...(showVisibility ? [dim('', VIS_W)] : []),
     c.dim(fit('checking…', subjectW)),
   ];
 }
 
-const renderer: LiveRenderer<StatusRow> = {
-  columns: COLUMNS,
-  cells(label: string, row: StatusRow | null, ctx: RowContext): string[] {
-    const repoW = ctx.layout.widths[1] ?? 0;
-    const subjectW = ctx.layout.widths[7] ?? 0;
-    if (row === null) return pendingCells(label, ctx.spinner, ctx.c, repoW, subjectW);
-    return resolvedCells(row, ctx.c, ctx.g, repoW, subjectW);
-  },
-  summary(rows, c): string[] {
-    const present = rows.filter((r): r is StatusRow => r !== null);
-    const total = present.length;
-    const count = (pred: (r: StatusRow) => boolean): number => present.filter(pred).length;
-    const bits = [`${total} repo${total === 1 ? '' : 's'}`];
-    const dirtyN = count((r) => !r.missing && r.dirty > 0);
-    const aheadN = count((r) => !r.missing && r.ahead > 0);
-    const behindN = count((r) => !r.missing && r.behind > 0);
-    const detachedN = count((r) => !r.missing && r.branch === null);
-    const missingN = count((r) => r.missing);
-    if (dirtyN) bits.push(c.yellow(`${dirtyN} dirty`));
-    if (aheadN) bits.push(c.green(`${aheadN} ahead`));
-    if (behindN) bits.push(c.red(`${behindN} behind`));
-    if (detachedN) bits.push(c.magenta(`${detachedN} detached`));
-    if (missingN) bits.push(c.red(`${missingN} missing`));
-    return ['', c.dim('Summary: ') + bits.join(c.dim('  ·  '))];
-  },
-};
+/** Build the renderer for a status view, with VISIBILITY column opt-in. */
+function buildRenderer(showVisibility: boolean): LiveRenderer<StatusRow> {
+  const columns = buildColumns(showVisibility);
+  // SUBJECT is always the last column; its layout index is the flex column.
+  const subjectIndex = columns.length - 1;
+  return {
+    columns,
+    cells(label: string, row: StatusRow | null, ctx: RowContext): string[] {
+      const repoW = ctx.layout.widths[1] ?? 0;
+      const subjectW = ctx.layout.widths[subjectIndex] ?? 0;
+      if (row === null) {
+        return pendingCells(label, ctx.spinner, ctx.c, repoW, subjectW, showVisibility);
+      }
+      return resolvedCells(row, ctx.c, ctx.g, repoW, subjectW, showVisibility);
+    },
+    summary(rows, c): string[] {
+      const present = rows.filter((r): r is StatusRow => r !== null);
+      const total = present.length;
+      const count = (pred: (r: StatusRow) => boolean): number => present.filter(pred).length;
+      const bits = [`${total} repo${total === 1 ? '' : 's'}`];
+      const dirtyN = count((r) => !r.missing && r.dirty > 0);
+      const aheadN = count((r) => !r.missing && r.ahead > 0);
+      const behindN = count((r) => !r.missing && r.behind > 0);
+      const detachedN = count((r) => !r.missing && r.branch === null);
+      const missingN = count((r) => r.missing);
+      if (dirtyN) bits.push(c.yellow(`${dirtyN} dirty`));
+      if (aheadN) bits.push(c.green(`${aheadN} ahead`));
+      if (behindN) bits.push(c.red(`${behindN} behind`));
+      if (detachedN) bits.push(c.magenta(`${detachedN} detached`));
+      if (missingN) bits.push(c.red(`${missingN} missing`));
+      return ['', c.dim('Summary: ') + bits.join(c.dim('  ·  '))];
+    },
+  };
+}
 
-export function createStatusView(repoNames: string[], opts: { enabled: boolean }): StatusView {
+export function createStatusView(
+  repoNames: string[],
+  opts: { enabled: boolean; showVisibility?: boolean },
+): StatusView {
+  const renderer = buildRenderer(opts.showVisibility ?? false);
   return createLiveView(repoNames, renderer, { enabled: opts.enabled, verb: 'inspecting' });
 }

@@ -109,11 +109,23 @@ export async function readRepoVisibility(
   }
 }
 
-export async function readRepoStatus(dir: string, signal?: AbortSignal): Promise<RepoStatus> {
+export interface ReadStatusOptions {
+  /** When true, probe GitHub visibility via `gh`. Off by default — it spawns an
+   * out-of-process CLI call per repo, so callers opt in explicitly. */
+  visibility?: boolean;
+  signal?: AbortSignal;
+}
+
+export async function readRepoStatus(
+  dir: string,
+  opts: ReadStatusOptions = {},
+): Promise<RepoStatus> {
   const git: SimpleGit = simpleGit({ baseDir: dir });
   // Kick off the (out-of-process) visibility probe up front so it overlaps with
-  // the local git reads below; awaited at the end.
-  const visibilityP = readRepoVisibility(dir, signal);
+  // the local git reads below; awaited at the end. Skipped unless requested.
+  const visibilityP = opts.visibility
+    ? readRepoVisibility(dir, opts.signal)
+    : Promise.resolve<string | null>(null);
   let branch: string | null = null;
   try {
     const summary = await git.branch();
