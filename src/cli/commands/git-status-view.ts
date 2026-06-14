@@ -17,6 +17,8 @@ export interface StatusRow {
   dirty: number;
   last_commit: string | null;
   last_commit_subject: string | null;
+  /** GitHub visibility via `gh`, or null when unavailable/not GitHub. */
+  visibility: string | null;
   /** True when the repo is enumerated in the manifest but not yet cloned. */
   missing: boolean;
 }
@@ -32,6 +34,7 @@ const BRANCH_W = 16;
 const SYNC_W = 8;
 const CHANGES_W = 7;
 const COMMIT_W = 7;
+const VIS_W = 10;
 
 const COLUMNS: LiveColumn[] = [
   { header: '', width: ICON_W },
@@ -40,10 +43,20 @@ const COLUMNS: LiveColumn[] = [
   { header: 'SYNC', width: SYNC_W },
   { header: 'CHANGES', width: CHANGES_W },
   { header: 'COMMIT', width: COMMIT_W },
+  { header: 'VISIBILITY', width: VIS_W },
   { header: 'SUBJECT', width: 'flex' satisfies ColumnWidth },
 ];
 
-/** Build the 7 exact-width, colorized cells for one resolved repo row. */
+/** Colorize a repo's visibility into an exact-width cell. */
+function visibilityCell(v: string | null, c: Palette): string {
+  if (!v) return c.dim(fit('—', VIS_W));
+  if (v === 'public') return c.green(fit(v, VIS_W));
+  if (v === 'private') return c.yellow(fit(v, VIS_W));
+  if (v === 'internal') return c.blue(fit(v, VIS_W));
+  return c.dim(fit(v, VIS_W));
+}
+
+/** Build the 8 exact-width, colorized cells for one resolved repo row. */
 function resolvedCells(
   r: StatusRow,
   c: Palette,
@@ -63,6 +76,7 @@ function resolvedCells(
       c.dim(fit('·', SYNC_W)),
       c.dim(fit('—', CHANGES_W)),
       c.dim(fit('—', COMMIT_W)),
+      c.dim(fit('—', VIS_W)),
       c.dim(fit('not cloned', subjectW)),
     ];
   }
@@ -107,11 +121,12 @@ function resolvedCells(
     ? c.yellow(fit(`${g.dirty} ${r.dirty}`, CHANGES_W))
     : c.dim(fit(g.clean, CHANGES_W));
   const commit = c.dim(fit(r.last_commit ?? '—', COMMIT_W));
+  const visibility = visibilityCell(r.visibility, c);
   const subject = fit((r.last_commit_subject ?? '').split('\n')[0] ?? '', subjectW);
-  return [icon, repo, branch, sync, changes, commit, subject];
+  return [icon, repo, branch, sync, changes, commit, visibility, subject];
 }
 
-/** Build the 7 exact-width cells for a not-yet-resolved row (spinner + name). */
+/** Build the 8 exact-width cells for a not-yet-resolved row (spinner + name). */
 function pendingCells(
   repo: string,
   spinner: string,
@@ -127,6 +142,7 @@ function pendingCells(
     dim('·', SYNC_W),
     dim('', CHANGES_W),
     dim('', COMMIT_W),
+    dim('', VIS_W),
     c.dim(fit('checking…', subjectW)),
   ];
 }
@@ -135,7 +151,7 @@ const renderer: LiveRenderer<StatusRow> = {
   columns: COLUMNS,
   cells(label: string, row: StatusRow | null, ctx: RowContext): string[] {
     const repoW = ctx.layout.widths[1] ?? 0;
-    const subjectW = ctx.layout.widths[6] ?? 0;
+    const subjectW = ctx.layout.widths[7] ?? 0;
     if (row === null) return pendingCells(label, ctx.spinner, ctx.c, repoW, subjectW);
     return resolvedCells(row, ctx.c, ctx.g, repoW, subjectW);
   },

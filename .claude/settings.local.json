@@ -48,7 +48,10 @@
       "Bash(perl -0pi -e 's/# optional additional group membership \\\\\\(repo-level groups are declared in the kind: repo manifest\\\\\\)/# optional additional group membership/g' docs/manifests.md)",
       "Bash(git commit -m ' *)",
       "Bash(GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null node --import tsx --test test/git.test.ts)",
-      "Bash(pnpm build *)"
+      "Bash(pnpm build *)",
+      "Bash(command -v gh)",
+      "Bash(gh repo *)",
+      "Bash(git commit *)"
     ]
   }
 }

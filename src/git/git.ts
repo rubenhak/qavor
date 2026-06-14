@@ -64,10 +64,56 @@ export interface RepoStatus {
   /** Short last commit oid (7 chars), or null if no commits yet. */
   lastCommit: string | null;
   lastCommitSubject: string | null;
+  /**
+   * GitHub repo visibility (`'public' | 'private' | 'internal'`) as reported by
+   * the `gh` CLI, or null when `gh` is unavailable, the repo is not hosted on
+   * GitHub, or the lookup otherwise fails.
+   */
+  visibility: string | null;
 }
 
-export async function readRepoStatus(dir: string): Promise<RepoStatus> {
+// Resolve `gh` availability once per process: a single `gh --version` probe
+// shared by every repo so we don't spawn the CLI per repo just to find it
+// missing.
+let ghAvailable: Promise<boolean> | undefined;
+function isGhAvailable(): Promise<boolean> {
+  ghAvailable ??= execa('gh', ['--version'], { reject: false }).then(
+    (r) => r.exitCode === 0,
+    () => false,
+  );
+  return ghAvailable;
+}
+
+/**
+ * Best-effort lookup of a repo's GitHub visibility via the `gh` CLI. Returns the
+ * lowercased visibility string (`'public'`, `'private'`, `'internal'`) or null
+ * when `gh` is absent, the repo isn't a GitHub remote, or the call fails. Never
+ * throws — visibility is decorative status, not a hard requirement.
+ */
+export async function readRepoVisibility(
+  dir: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  if (!(await isGhAvailable())) return null;
+  try {
+    const res = await execa('gh', ['repo', 'view', '--json', 'visibility', '--jq', '.visibility'], {
+      cwd: dir,
+      reject: false,
+      ...(signal ? { cancelSignal: signal } : {}),
+    });
+    if (res.exitCode !== 0) return null;
+    const v = typeof res.stdout === 'string' ? res.stdout.trim().toLowerCase() : '';
+    return v.length > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function readRepoStatus(dir: string, signal?: AbortSignal): Promise<RepoStatus> {
   const git: SimpleGit = simpleGit({ baseDir: dir });
+  // Kick off the (out-of-process) visibility probe up front so it overlaps with
+  // the local git reads below; awaited at the end.
+  const visibilityP = readRepoVisibility(dir, signal);
   let branch: string | null = null;
   try {
     const summary = await git.branch();
@@ -108,7 +154,8 @@ export async function readRepoStatus(dir: string): Promise<RepoStatus> {
   } catch {
     /* ignore */
   }
-  return { branch, ahead, behind, dirtyCount, lastCommit, lastCommitSubject };
+  const visibility = await visibilityP;
+  return { branch, ahead, behind, dirtyCount, lastCommit, lastCommitSubject, visibility };
 }
 
 export interface CloneOptions {

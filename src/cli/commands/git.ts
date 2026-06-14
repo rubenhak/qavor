@@ -206,6 +206,7 @@ export function registerGitCommands(program: Command): void {
             dirty: 0,
             last_commit: null,
             last_commit_subject: null,
+            visibility: null,
             missing: true,
           };
         } else {
@@ -218,6 +219,7 @@ export function registerGitCommands(program: Command): void {
             dirty: s.dirtyCount,
             last_commit: s.lastCommit,
             last_commit_subject: s.lastCommitSubject,
+            visibility: s.visibility,
             missing: false,
           };
         }

@@ -61,7 +61,7 @@ test('qavor status: human output renders a table + summary footer (ASCII fallbac
     assert.equal(status.exitCode, 0, `status failed: ${status.stderr}`);
     // Non-TTY + NO_COLOR: no ANSI escapes, ASCII glyphs only.
     assert.ok(!status.stdout.includes('\u001b['), 'piped output must not contain ANSI escapes');
-    assert.match(status.stdout, /REPO\s+BRANCH\s+SYNC\s+CHANGES\s+COMMIT\s+SUBJECT/);
+    assert.match(status.stdout, /REPO\s+BRANCH\s+SYNC\s+CHANGES\s+COMMIT\s+VISIBILITY\s+SUBJECT/);
     assert.match(status.stdout, /\bweb\b.*\bmain\b/);
     // Dirty repo shows the ASCII dirty glyph + count and the summary tallies it.
     assert.match(status.stdout, /Summary:.*1 repo.*1 dirty/s);
