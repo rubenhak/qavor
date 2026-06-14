@@ -13,12 +13,52 @@ import {
 import type { ProjectManifest } from '../../manifest/types/index.js';
 import { runFanOut } from '../../util/concurrency.js';
 import { RuntimeFailure, UserError } from '../../util/exit-codes.js';
-import { emit, emitJson, getLogger } from '../../util/logger.js';
+import type { Logger } from '../../util/logger.js';
+import { emitJson, getLogger } from '../../util/logger.js';
 import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
 import { type ResolvedRepo, resolveRepos } from '../../workspace/repos.js';
 import { inheritRootOptions, resolveExecutionPlan } from '../options.js';
 import { reposPresent, selectRepos } from '../repos.js';
+import { type ActionRow, createActionView } from './git-action-view.js';
 import { createStatusView, type StatusRow } from './git-status-view.js';
+
+/** Build an {@link ActionRow} from a thrown error, preserving its message tail. */
+function failRow(repo: string, err: unknown): ActionRow {
+  return {
+    repo,
+    outcome: 'fail',
+    status: 'failed',
+    detail: err instanceof Error ? err.message : String(err),
+  };
+}
+
+/** Clone a single repo, mapping the outcome to an {@link ActionRow}. */
+async function cloneOne(r: ResolvedRepo, logger: Logger): Promise<ActionRow> {
+  if (r.isProjectRepo) {
+    return { repo: r.name, outcome: 'ok', status: 'present', detail: 'project repo' };
+  }
+  if (await isGitRepo(r.dir)) {
+    return { repo: r.name, outcome: 'ok', status: 'present' };
+  }
+  try {
+    logger.info({ repo: r.name, url: r.url, dir: r.dir }, 'clone: starting');
+    await gitClone({
+      url: r.url,
+      dest: r.dir,
+      branch: r.branch,
+      tag: r.tag,
+      commit: r.commit,
+      shallow: r.shallow,
+      submodules: r.submodules,
+    });
+    return { repo: r.name, outcome: 'changed', status: 'cloned' };
+  } catch (err) {
+    if (r.optional) {
+      return { repo: r.name, outcome: 'skip', status: 'skipped', detail: 'optional; clone failed' };
+    }
+    return failRow(r.name, err);
+  }
+}
 
 async function loadProjectRepos(): Promise<{ workspaceRoot: string; repos: ResolvedRepo[] }> {
   const ws = await resolveWorkspace();
@@ -60,44 +100,16 @@ export function registerGitCommands(program: Command): void {
     const selected = selectRepos(repos, opts.repo);
     const plan = resolveExecutionPlan(root, 'parallel');
 
-    type CloneResult = {
-      repo: string;
-      status: 'cloned' | 'present' | 'skipped' | 'failed';
-      message?: string;
-    };
-    const results = await runFanOut<ResolvedRepo, CloneResult>(
+    const view = createActionView(
+      selected.map((r) => r.name),
+      { enabled: !root.json && !root.verbose, verb: 'cloning' },
+    );
+    const results = await runFanOut<ResolvedRepo, ActionRow>(
       selected,
-      async (r) => {
-        if (r.isProjectRepo) {
-          return {
-            repo: r.name,
-            status: 'present',
-            message: 'project repo (already cloned)',
-          };
-        }
-        if (await isGitRepo(r.dir)) {
-          return { repo: r.name, status: 'present' };
-        }
-        try {
-          logger.info({ repo: r.name, url: r.url, dir: r.dir }, 'clone: starting');
-          await gitClone({
-            url: r.url,
-            dest: r.dir,
-            branch: r.branch,
-            tag: r.tag,
-            commit: r.commit,
-            shallow: r.shallow,
-            submodules: r.submodules,
-          });
-          return { repo: r.name, status: 'cloned' };
-        } catch (err) {
-          if (r.optional) {
-            return { repo: r.name, status: 'skipped', message: 'optional; clone failed' };
-          }
-          throw new RuntimeFailure(
-            `Clone failed for ${r.name}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
+      async (r, index) => {
+        const row = await cloneOne(r, logger);
+        view.resolve(index, row);
+        return row;
       },
       plan,
     );
@@ -106,8 +118,9 @@ export function registerGitCommands(program: Command): void {
       emitJson({ workspace: workspaceRoot, results });
       return;
     }
-    for (const r of results) {
-      emit(`${r.status.padEnd(8)} ${r.repo}${r.message ? `  — ${r.message}` : ''}`);
+    view.finish();
+    if (results.some((r) => r.outcome === 'fail')) {
+      throw new RuntimeFailure('Some repos failed to clone.');
     }
   });
 
@@ -118,20 +131,23 @@ export function registerGitCommands(program: Command): void {
     const { repos } = await loadProjectRepos();
     const selected = await reposPresent(selectRepos(repos, opts.repo));
     const plan = resolveExecutionPlan(root, 'parallel');
+    const view = createActionView(
+      selected.map((r) => r.name),
+      { enabled: !root.json && !root.verbose, verb: 'syncing' },
+    );
     const results = await runFanOut(
       selected,
-      async (r): Promise<{ repo: string; ok: boolean; error?: string }> => {
+      async (r, index): Promise<ActionRow> => {
+        let row: ActionRow;
         try {
           await gitFetch(r.dir);
           await gitPullFastForward(r.dir);
-          return { repo: r.name, ok: true };
+          row = { repo: r.name, outcome: 'changed', status: 'synced' };
         } catch (err) {
-          return {
-            repo: r.name,
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-          };
+          row = failRow(r.name, err);
         }
+        view.resolve(index, row);
+        return row;
       },
       plan,
     );
@@ -139,9 +155,10 @@ export function registerGitCommands(program: Command): void {
       emitJson({ results });
       return;
     }
-    for (const r of results)
-      emit(`${r.ok ? 'ok  ' : 'fail'} ${r.repo}${r.error ? `  — ${r.error}` : ''}`);
-    if (results.some((r) => !r.ok)) throw new RuntimeFailure('Some repos failed to sync.');
+    view.finish();
+    if (results.some((r) => r.outcome === 'fail')) {
+      throw new RuntimeFailure('Some repos failed to sync.');
+    }
   });
 
   repoOption(
@@ -182,7 +199,7 @@ export function registerGitCommands(program: Command): void {
       emitJson({ workspace: workspaceRoot, repos: rows });
       return;
     }
-    view.finish(rows);
+    view.finish();
   });
 
   repoOption(
@@ -217,23 +234,28 @@ export function registerGitCommands(program: Command): void {
       // Commits mutate working trees and may fire pre-commit hooks that share
       // caches, so default to serial; users opt into `--parallel` explicitly.
       const plan = resolveExecutionPlan(root, 'serial');
+      const view = createActionView(
+        selected.map((r) => r.name),
+        { enabled: !root.json && !root.verbose, verb: 'committing' },
+      );
       const results = await runFanOut(
         selected,
-        async (r): Promise<{ repo: string; committed: boolean; error?: string }> => {
+        async (r, index): Promise<ActionRow> => {
+          let row: ActionRow;
           try {
             const res = await gitCommit(r.dir, message, {
               allowEmpty: Boolean(opts.allowEmpty),
               files,
               noVerify: opts.verify === false,
             });
-            return { repo: r.name, committed: res.committed };
+            row = res.committed
+              ? { repo: r.name, outcome: 'changed', status: 'committed' }
+              : { repo: r.name, outcome: 'skip', status: 'skipped', detail: 'nothing to commit' };
           } catch (err) {
-            return {
-              repo: r.name,
-              committed: false,
-              error: err instanceof Error ? err.message : String(err),
-            };
+            row = failRow(r.name, err);
           }
+          view.resolve(index, row);
+          return row;
         },
         plan,
       );
@@ -241,11 +263,10 @@ export function registerGitCommands(program: Command): void {
         emitJson({ results });
         return;
       }
-      for (const r of results) {
-        const verb = r.committed ? 'committed' : r.error ? 'failed' : 'skipped';
-        emit(`${verb.padEnd(10)} ${r.repo}${r.error ? `  — ${r.error}` : ''}`);
+      view.finish();
+      if (results.some((r) => r.outcome === 'fail')) {
+        throw new RuntimeFailure('Some commits failed.');
       }
-      if (results.some((r) => r.error)) throw new RuntimeFailure('Some commits failed.');
     },
   );
 
@@ -256,19 +277,22 @@ export function registerGitCommands(program: Command): void {
     const { repos } = await loadProjectRepos();
     const selected = await reposPresent(selectRepos(repos, opts.repo));
     const plan = resolveExecutionPlan(root, 'parallel');
+    const view = createActionView(
+      selected.map((r) => r.name),
+      { enabled: !root.json && !root.verbose, verb: 'pushing' },
+    );
     const results = await runFanOut(
       selected,
-      async (r): Promise<{ repo: string; ok: boolean; error?: string }> => {
+      async (r, index): Promise<ActionRow> => {
+        let row: ActionRow;
         try {
           await gitPush(r.dir);
-          return { repo: r.name, ok: true };
+          row = { repo: r.name, outcome: 'changed', status: 'pushed' };
         } catch (err) {
-          return {
-            repo: r.name,
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-          };
+          row = failRow(r.name, err);
         }
+        view.resolve(index, row);
+        return row;
       },
       plan,
     );
@@ -276,9 +300,10 @@ export function registerGitCommands(program: Command): void {
       emitJson({ results });
       return;
     }
-    for (const r of results)
-      emit(`${r.ok ? 'ok  ' : 'fail'} ${r.repo}${r.error ? `  — ${r.error}` : ''}`);
-    if (results.some((r) => !r.ok)) throw new RuntimeFailure('Some pushes failed.');
+    view.finish();
+    if (results.some((r) => r.outcome === 'fail')) {
+      throw new RuntimeFailure('Some pushes failed.');
+    }
   });
 
   // ensure `path` import used
