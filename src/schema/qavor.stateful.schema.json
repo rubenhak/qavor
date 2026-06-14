@@ -20,7 +20,7 @@
       "type": "array",
       "items": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name" },
       "uniqueItems": true,
-      "description": "Additional group memberships. When this manifest is at the root of a repo, these also define repo group membership."
+      "description": "Additional group memberships for this stateful service."
     },
     "profiles": {
       "type": "array",

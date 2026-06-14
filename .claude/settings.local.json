@@ -39,7 +39,13 @@
       "Bash(node --import tsx --test --test-reporter=spec --test-name-pattern='clones the repos' test/git.test.ts)",
       "Bash(node --import tsx --test --test-reporter=spec --test-name-pattern='status' test/git.test.ts test/env.test.ts)",
       "Bash(./test.sh --test-name-pattern='status')",
-      "Bash(./test.sh --test-name-pattern='clones the repos' test/git.test.ts)"
+      "Bash(./test.sh --test-name-pattern='clones the repos' test/git.test.ts)",
+      "Bash(find / -name \"*.md\" -path \"*qavor-init*\")",
+      "Read(//Users/rubenhak/.claude/**)",
+      "Bash(pnpm gen:types)",
+      "Bash(grep -rn \"kind: repo\\\\|kind:repo\\\\|'repo'\\\\|\\\\\"repo\\\\\"\\\\| repo \\\\`\\\\|\\\\`repo\\\\`\" docs/ README.md AGENTS.md test/)",
+      "Bash(cd *)",
+      "Bash(perl -0pi -e 's/# optional additional group membership \\\\\\(repo-level groups are declared in the kind: repo manifest\\\\\\)/# optional additional group membership/g' docs/manifests.md)"
     ]
   }
 }

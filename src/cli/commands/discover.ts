@@ -9,7 +9,7 @@ export function registerDiscover(program: Command): void {
   program
     .command('discover')
     .description(
-      'Scan git repos at the workspace root, scaffold a default service qavor.yaml in each, and register them in the project manifest.',
+      'Scan git repos at the workspace root and register them in the project manifest. A service qavor.yaml is scaffolded only into repos that ship a Dockerfile.',
     )
     .option('--dry-run', 'Report what would change without writing any files.')
     .action(async (opts: { dryRun?: boolean }, cmd: Command) => {
@@ -47,7 +47,9 @@ export function registerDiscover(program: Command): void {
       for (const r of result.repos) {
         const marks: string[] = [];
         if (r.manifestCreated)
-          marks.push(dryRun ? 'would scaffold qavor.yaml' : 'scaffolded qavor.yaml');
+          marks.push(
+            dryRun ? 'would scaffold service qavor.yaml' : 'scaffolded service qavor.yaml',
+          );
         if (r.referenceAdded) marks.push(dryRun ? 'would add to project' : 'added to project');
         if (marks.length === 0) marks.push('up to date');
         emit(`  ${r.name.padEnd(24)} ${marks.join(', ')}`);

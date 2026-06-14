@@ -14,7 +14,11 @@ export interface DiscoveredRepo {
   dir: string;
   /** Absolute path to the repo's `qavor.yaml`. */
   manifestFile: string;
-  /** True when this run scaffolded a new service manifest in the repo. */
+  /**
+   * True when this run scaffolded a `kind: service` manifest into the repo.
+   * Only happens for repos that have a `Dockerfile` at their root and no
+   * existing `qavor.yaml`.
+   */
   manifestCreated: boolean;
   /** True when this run added the repo to the project manifest. */
   referenceAdded: boolean;
@@ -38,10 +42,27 @@ export interface DiscoverOptions {
 }
 
 /**
- * The default service manifest scaffolded into a freshly discovered repo.
+ * The default `kind: service` manifest scaffolded into a freshly discovered
+ * repo that ships a `Dockerfile`. A Dockerfile signals the repo is a runnable
+ * app, so we seed a docker-mode service describing how to build and run it.
  */
 function renderServiceManifest(name: string): string {
-  return stringify({ kind: 'service', name, description: name });
+  return stringify({
+    kind: 'service',
+    name,
+    description: name,
+    mode: 'docker',
+    runtime: {
+      docker: {
+        enabled: true,
+        prepare: { cmd: `docker build -t \${IMAGE_NAME} .` },
+        run: { cmd: `docker run -it --rm \${IMAGE_NAME}` },
+      },
+    },
+    env: {
+      docker: { IMAGE_NAME: name },
+    },
+  });
 }
 
 /** Collect the repo names already enumerated in a project manifest body. */
@@ -62,9 +83,14 @@ function referencedNames(repositories: unknown): Set<string> {
 }
 
 /**
- * Scan the immediate children of the workspace root for git repos, scaffold a
- * default `kind: service` manifest into each that lacks a `qavor.yaml`, and add
- * any unreferenced repo to the project manifest's `repositories:` list.
+ * Scan the immediate children of the workspace root for git repos and add any
+ * unreferenced repo to the project manifest's `repositories:` list — the single
+ * source of truth for the workspace repo set.
+ *
+ * A `kind: service` manifest is scaffolded into a repo only when it ships a
+ * `Dockerfile` at its root and has no existing `qavor.yaml`; the Dockerfile
+ * signals a runnable app. Repos without a Dockerfile are registered in the
+ * project manifest but left untouched on disk.
  *
  * Idempotent: existing manifests are never overwritten and repos already listed
  * in the project manifest are not duplicated.
@@ -119,9 +145,12 @@ export async function discoverRepos(opts: DiscoverOptions): Promise<DiscoverResu
 
     const manifestFile = path.join(dir, 'qavor.yaml');
     const hasManifest = await isFile(manifestFile);
+    const hasDockerfile = await isFile(path.join(dir, 'Dockerfile'));
     const referenceAdded = !referenced.has(name);
+    // Only seed a service manifest for runnable (Dockerfile-bearing) repos.
+    const scaffold = !hasManifest && hasDockerfile;
 
-    if (!hasManifest && !opts.dryRun) {
+    if (scaffold && !opts.dryRun) {
       await fs.writeFile(manifestFile, renderServiceManifest(name), 'utf8');
     }
     if (referenceAdded) {
@@ -138,7 +167,7 @@ export async function discoverRepos(opts: DiscoverOptions): Promise<DiscoverResu
       name,
       dir,
       manifestFile,
-      manifestCreated: !hasManifest,
+      manifestCreated: scaffold,
       referenceAdded,
     });
   }

@@ -3,7 +3,6 @@ import addFormats from 'ajv-formats';
 import defsSchema from '../schema/qavor.defs.schema.json' with { type: 'json' };
 import profileSchema from '../schema/qavor.profile.schema.json' with { type: 'json' };
 import projectSchema from '../schema/qavor.project.schema.json' with { type: 'json' };
-import repoSchema from '../schema/qavor.repo.schema.json' with { type: 'json' };
 import serviceSchema from '../schema/qavor.service.schema.json' with { type: 'json' };
 import statefulSchema from '../schema/qavor.stateful.schema.json' with { type: 'json' };
 import workspacesSchema from '../schema/qavor.workspaces.schema.json' with { type: 'json' };
@@ -30,20 +29,12 @@ export interface ValidationResult {
 const KIND_SCHEMA_IDS: Record<ManifestKind, string> = {
   workspaces: (workspacesSchema as { $id: string }).$id,
   project: (projectSchema as { $id: string }).$id,
-  repo: (repoSchema as { $id: string }).$id,
   service: (serviceSchema as { $id: string }).$id,
   stateful: (statefulSchema as { $id: string }).$id,
   profile: (profileSchema as { $id: string }).$id,
 };
 
-const ALL_KINDS: ManifestKind[] = [
-  'workspaces',
-  'project',
-  'repo',
-  'service',
-  'stateful',
-  'profile',
-];
+const ALL_KINDS: ManifestKind[] = ['workspaces', 'project', 'service', 'stateful', 'profile'];
 
 let ajvSingleton: Ajv2020 | null = null;
 const validatorCache = new Map<ManifestKind, ValidateFunction>();
@@ -60,7 +51,6 @@ function getAjv(): Ajv2020 {
   ajv.addSchema(defsSchema as object);
   ajv.addSchema(workspacesSchema as object);
   ajv.addSchema(projectSchema as object);
-  ajv.addSchema(repoSchema as object);
   ajv.addSchema(serviceSchema as object);
   ajv.addSchema(statefulSchema as object);
   ajv.addSchema(profileSchema as object);

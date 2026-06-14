@@ -30,7 +30,7 @@ Qavor is a **lean wrapper CLI** that owns the manifest model, dependency graph, 
 
 ### Manifest model
 
-All YAML documents carry a top-level `kind:` field that dispatches to its JSON Schema and orchestration semantics. Schemas live in `docs/schemas/` and are **the single source of truth** — TypeScript types in `src/manifest/types/` are generated from them via `json-schema-to-typescript`, never hand-written. When adding manifest fields: edit the schema first → `pnpm gen:types` → write code against the generated type.
+All YAML documents carry a top-level `kind:` field that dispatches to its JSON Schema and orchestration semantics. The `kind: project` manifest's `repositories:` list is the **single source of truth for the workspace repo set** — `kind: service` manifests only describe how to build and run apps and never contribute repos to the workspace. Schemas live in `docs/schemas/` and are **the single source of truth** — TypeScript types in `src/manifest/types/` are generated from them via `json-schema-to-typescript`, never hand-written. When adding manifest fields: edit the schema first → `pnpm gen:types` → write code against the generated type.
 
 ### Source layout
 

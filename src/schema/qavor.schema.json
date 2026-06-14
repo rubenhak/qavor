@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qavor.dev/schemas/qavor.schema.json",
   "title": "qavor manifest (any kind)",
-  "description": "Master dispatcher schema for any qavor manifest document. The `kind` field discriminates between the six per-kind schemas. Multi-document YAML files (`---` separated) are validated by applying this schema to each document independently.",
+  "description": "Master dispatcher schema for any qavor manifest document. The `kind` field discriminates between the five per-kind schemas. Multi-document YAML files (`---` separated) are validated by applying this schema to each document independently.",
   "type": "object",
   "required": ["kind"],
   "properties": {
     "kind": {
       "type": "string",
-      "enum": ["workspaces", "project", "repo", "service", "stateful", "profile"]
+      "enum": ["workspaces", "project", "service", "stateful", "profile"]
     }
   },
   "allOf": [
@@ -19,10 +19,6 @@
     {
       "if": { "properties": { "kind": { "const": "project" } }, "required": ["kind"] },
       "then": { "$ref": "https://qavor.dev/schemas/qavor.project.schema.json" }
-    },
-    {
-      "if": { "properties": { "kind": { "const": "repo" } }, "required": ["kind"] },
-      "then": { "$ref": "https://qavor.dev/schemas/qavor.repo.schema.json" }
     },
     {
       "if": { "properties": { "kind": { "const": "service" } }, "required": ["kind"] },

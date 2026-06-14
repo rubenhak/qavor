@@ -2,7 +2,7 @@
 
 Source-of-truth task list for the **v0 / MVP** milestone defined in section 10 of the [proposal](./proposal.md). Reflects the manifest model in [manifests.md](./manifests.md) as the authoritative shape.
 
-**Scope statement.** The MVP must let a single developer run `qavor init <project-repo-source>` against a project repo whose `kind: project` manifest enumerates a small set of repos, clone them, run any prepare commands declared by their service manifests, and start one `kind: service` per repo in **native mode** with layered env vars composed per the documented resolution order.
+**Scope statement.** The MVP must let a single developer run `qavor init <project-repo-source>` against a project repo whose `kind: project` manifest enumerates a small set of repos (the sole source of the workspace repo set), clone them, run any prepare commands declared by the `kind: service` manifests found in those repos, and start those services in **native mode** with layered env vars composed per the documented resolution order.
 
 No groups (selectors), no cross-service graph orchestration, no docker mode, no stateful, no profiles. Those land in v0.5 / v1 per the roadmap.
 
@@ -30,7 +30,7 @@ No groups (selectors), no cross-service graph orchestration, no docker mode, no 
 
 ## Workstream B — Manifest model & validation
 
-- [ ] **B1.** Vendor [`docs/schemas/qavor.schema.json`](./schemas/qavor.schema.json) and the per-kind schemas (`workspaces`, `project`, `repo`, `service`, `stateful`, `profile`, plus shared `qavor.defs.schema.json`) into `src/schema/` and import them as JSON modules.
+- [ ] **B1.** Vendor [`docs/schemas/qavor.schema.json`](./schemas/qavor.schema.json) and the per-kind schemas (`workspaces`, `project`, `service`, `stateful`, `profile`, plus shared `qavor.defs.schema.json`) into `src/schema/` and import them as JSON modules.
 - [ ] **B2.** Implement an asynchronous YAML loader that preserves source positions and supports multi-document files (`---` separated). Use `yaml` (eemeli/yaml) — read files via `node:fs/promises` and use the CST/AST surface to map nodes back to `file:line:column`. Loader returns one parsed document per `kind:` node.
 - [ ] **B3.** Wire `ajv` (draft 2020-12) + `ajv-formats` for validation; dispatch each loaded document to the per-kind schema based on its `kind:` field. Compile schemas once at startup; map Ajv errors back to `file:line:path` using the position info from B2.
 - [ ] **B4.** Generate TypeScript types for the six manifest kinds from the JSON Schemas via `json-schema-to-typescript` (kept in sync via a `pnpm gen:types` script run in CI). `kind:` is the discriminated-union tag; each kind has its own type. Hand-write narrow runtime guards where the generator falls short.
@@ -78,7 +78,7 @@ No groups (selectors), no cross-service graph orchestration, no docker mode, no 
 - [ ] **F1.** Implement `src/prepare/` that, for each selected `kind: service`, runs the `runtime.native.prepare.cmd` declared on the service (or its profile, post-MVP) via `execa`. The command executes asynchronously in the service's manifest directory with the composed env; stdout/stderr stream to per-service log files.
 - [ ] **F2.** Lockfile-aware skip — asynchronously hash a configurable list of files (default heuristics: `package-lock.json`/`pnpm-lock.yaml`/`yarn.lock` for node, `uv.lock` for python) via streaming `crypto.createHash` and write to `.qavor/cache/prepare/<service>.json`; skip when unchanged unless `--force`.
 - [ ] **F3.** `qavor prepare [--repo <name>]` command. Parallel across services via `p-queue`, honouring the global `--jobs` setting.
-- [ ] **F4.** Run `pre_prepare` / `post_prepare` hooks declared on the service, stateful, or repo manifest in scope.
+- [ ] **F4.** Run `pre_prepare` / `post_prepare` hooks declared on the service or stateful manifest in scope.
 - [ ] **F5.** Tests: fixture node service + fixture python/uv service prepare on first run; cache hit on re-run; `--force` invalidates.
 
 ## Workstream G — Environment composition (MVP subset)

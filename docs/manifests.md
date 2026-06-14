@@ -30,7 +30,6 @@ A typical workspace on disk looks like this:
 │   └── service-bar/
 │       └── qavor.yaml             # service manifest            (kind: service)
 ├── stateful-dependencies.git/     # repo grouping backing deps
-│   ├── qavor.yaml                 # repo manifest               (kind: repo)
 │   ├── postgresql/
 │   │   └── qavor.yaml             # stateful manifest           (kind: stateful)
 │   ├── kafka/
@@ -57,8 +56,10 @@ root_project_path: ./project-repo.git
 
 ## Project Manifest
 
-Defines how he repos are going to be cloned and the list of all repositories in the project.
-This repo is used to close the rest of the repos in the project.
+The single source of truth for the workspace's repo set. Defines how the repos are
+cloned and lists every repository in the project. `qavor init` reads this manifest to
+clone the rest of the repos. No other manifest kind contributes repos to the workspace —
+`kind: service` manifests only describe how to build and run apps.
 
 ```yaml
 # indicates that the manifest describes the root project / workspace
@@ -91,9 +92,11 @@ repositories:
 
 ## Service Manifest
 
-A runnable application. Replaces the prior `kind: dependency` example — a
-service is something the workspace runs, distinct from a stateful backing
-dependency it depends on.
+A runnable application: it describes how to build and execute an app. A service is
+something the workspace runs, distinct from a stateful backing dependency it depends
+on. A service manifest never defines which repos belong to the workspace — that list
+lives only in the `kind: project` manifest's `repositories:`. A repo may contain zero,
+one, or many service manifests.
 
 ```yaml
 # indicates that the manifest describes an executable application
@@ -102,8 +105,7 @@ kind: service
 # unique service name within the workspace; cross-repo refs use this
 name: auth
 
-# optional additional group membership. If this manicest is on the top of the repo,
-# it also defines he repo group membership
+# optional additional group membership
 groups: [backend]
 
 # which runtimes are available for this service
@@ -180,8 +182,7 @@ kind: stateful
 # unique stateful name within the workspace
 name: postgres
 
-# optional additional group membership. If this manicest is on the top of the repo,
-# it also defines he repo group membership
+# optional additional group membership
 groups: [database]
 
 # which runtimes are available; stateful deps run via docker-compose at v0
@@ -225,25 +226,6 @@ env:
     POSTGRES_PORT: "${POSTGRES_PORT}"
     POSTGRES_URL:  "postgres://auth:${secret:PG_PW}@${HOST}:${PORT}/auth"
     
-```
-
-
-
-## Repo Manifest
-
-Lives at the root of each repository. Carries metadata that does not belong on
-a single service: how to prepare the repo, what custom tasks it exposes, and
-which lifecycle hooks fire around qavor verbs.
-
-```yaml
-# indicates per-repo metadata
-kind: repo
-
-# repository identity; must match the `name` used in the project manifest
-name: another-repo
-
-# additional group memberships layered on top of project-level groups
-groups: [backend]
 ```
 
 
@@ -335,8 +317,7 @@ kind: service
 # unique service name within the workspace; cross-repo refs use this
 name: auth
 
-# optional additional group membership. If this manicest is on the top of the repo,
-# it also defines he repo group membership
+# optional additional group membership
 groups: [backend]
 
 profiles:

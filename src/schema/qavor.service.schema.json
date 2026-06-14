@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qavor.dev/schemas/qavor.service.schema.json",
   "title": "qavor service manifest",
-  "description": "Runnable application. Lives at the root of a single-service repo as `qavor.yaml`, or under a sub-directory of a multi-service repo (e.g. `service-foo/qavor.yaml`). When this manifest is at the root of a repo, its `groups` also define repo-level group membership.",
+  "description": "Runnable application: how to build and execute an app. Lives at the root of a single-service repo as `qavor.yaml`, or under a sub-directory of a multi-service repo (e.g. `service-foo/qavor.yaml`). A service manifest never defines the workspace repo set — the list of repositories comes solely from the `kind: project` manifest's `repositories:` list.",
   "type": "object",
   "additionalProperties": false,
   "required": ["kind", "name"],
@@ -20,7 +20,7 @@
       "type": "array",
       "items": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/name" },
       "uniqueItems": true,
-      "description": "Additional group memberships. When this manifest is at the root of a repo, these also define repo group membership."
+      "description": "Additional group memberships for this service."
     },
     "profiles": {
       "type": "array",

@@ -2,7 +2,6 @@ export type {
   QavorManifest,
   WorkspacesManifest,
   ProjectManifest,
-  RepoManifest,
   ServiceManifest,
   StatefulManifest,
   ProfileManifest,
@@ -27,7 +26,6 @@ export type {
 export type ManifestKind =
   | 'workspaces'
   | 'project'
-  | 'repo'
   | 'service'
   | 'stateful'
   | 'profile';

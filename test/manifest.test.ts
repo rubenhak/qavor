@@ -71,16 +71,13 @@ test('validator: unknown kind is rejected', async () => {
   }
 });
 
-test('loader: multi-document YAML returns one doc per kind', async () => {
+test('loader: multi-document YAML returns one doc per document', async () => {
   const dir = await makeTempDir();
   try {
     const file = await writeYaml(
       dir,
       'qavor.yaml',
       [
-        'kind: repo',
-        'name: multi-svc-repo',
-        '---',
         'kind: service',
         'name: alpha',
         'runtime:',
@@ -100,10 +97,9 @@ test('loader: multi-document YAML returns one doc per kind', async () => {
       ].join('\n'),
     );
     const docs = await loadManifestFile(file);
-    assert.equal(docs.length, 3);
-    assert.equal(docs[0]?.kind, 'repo');
+    assert.equal(docs.length, 2);
+    assert.equal(docs[0]?.kind, 'service');
     assert.equal(docs[1]?.kind, 'service');
-    assert.equal(docs[2]?.kind, 'service');
     for (const d of docs) {
       assert.equal(validateDocument(d).ok, true, `doc ${d.docIndex} should be valid`);
     }

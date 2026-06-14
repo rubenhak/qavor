@@ -5,7 +5,6 @@
 export type QavorManifest =
   | WorkspacesManifest
   | ProjectManifest
-  | RepoManifest
   | ServiceManifest
   | StatefulManifest
   | ProfileManifest;
@@ -44,10 +43,6 @@ export type ProjectRepoEntry = {
   optional?: boolean;
 };
 /**
- * One or more shell commands or paths to executable scripts, run in the manifest's directory.
- */
-export type HookCommands = string | [string, ...string[]];
-/**
  * Scalar value usable on the right-hand side of an env entry. Strings support ${VAR} and ${secret:NAME} interpolation.
  */
 export type EnvScalar = string | number | boolean;
@@ -74,6 +69,10 @@ export type Requirement = {
 export type Requirement1 = {
   [k: string]: unknown | undefined;
 };
+/**
+ * One or more shell commands or paths to executable scripts, run in the manifest's directory.
+ */
+export type HookCommands = string | [string, ...string[]];
 
 /**
  * Workspace pointer file. Lives at the root of the workspace directory as `qavor.yaml` and is created automatically by `qavor init`. Its only job is to point at the project repo whose `kind: project` manifest enumerates the rest of the workspace.
@@ -87,7 +86,7 @@ export interface WorkspacesManifest {
   root_project_path: string;
 }
 /**
- * Project-level manifest. Lives at the root of the project repo as `qavor.yaml`. Defines workspace identity and enumerates the repos that make up the workspace.
+ * Project-level manifest. Lives at the root of the project repo as `qavor.yaml`. Defines workspace identity and is the single source of truth for the list of repos that make up the workspace. No other manifest kind contributes to the repo set.
  */
 export interface ProjectManifest {
   kind: 'project';
@@ -115,7 +114,7 @@ export interface ProjectManifest {
     submodules?: boolean;
   };
   /**
-   * Named groups of repo names. A repo may appear in multiple groups. Repos can also self-declare additional group memberships in their own `kind: repo` or service/stateful manifests.
+   * Named groups of repo names. A repo may appear in multiple groups.
    */
   groups?: {
     /**
@@ -127,41 +126,14 @@ export interface ProjectManifest {
     [k: string]: [Name, ...Name[]];
   };
   /**
-   * Repos that compose the workspace. Each entry is either a bare name (URL derived from `git.root_url` + `git.repo_prefix` + name) or an object with explicit fields.
+   * The complete, authoritative list of repos that compose the workspace. This is the only place the repo set is declared. Each entry is either a bare name (URL derived from `git.root_url` + `git.repo_prefix` + name) or an object with explicit fields.
    *
    * @minItems 1
    */
   repositories: [Name | ProjectRepoEntry, ...(Name | ProjectRepoEntry)[]];
 }
 /**
- * Per-repo metadata. Lives at the root of an individual repo as `qavor.yaml` (or as one document of a multi-document `qavor.yaml`). Carries information that is not specific to a single service: identity, group membership, and lifecycle hooks that fire around qavor verbs at the repo level.
- */
-export interface RepoManifest {
-  kind: 'repo';
-  schemaVersion?: SchemaVersion;
-  name: Name;
-  description?: string;
-  /**
-   * Additional group memberships, layered on top of any groups assigned by the project manifest.
-   */
-  groups?: Name[];
-  hooks?: Hooks;
-}
-/**
- * Lifecycle hooks. Each hook list runs in the manifest's directory at the corresponding lifecycle event.
- */
-export interface Hooks {
-  pre_clone?: HookCommands;
-  post_clone?: HookCommands;
-  pre_prepare?: HookCommands;
-  post_prepare?: HookCommands;
-  pre_run?: HookCommands;
-  post_run?: HookCommands;
-  pre_stop?: HookCommands;
-  post_stop?: HookCommands;
-}
-/**
- * Runnable application. Lives at the root of a single-service repo as `qavor.yaml`, or under a sub-directory of a multi-service repo (e.g. `service-foo/qavor.yaml`). When this manifest is at the root of a repo, its `groups` also define repo-level group membership.
+ * Runnable application: how to build and execute an app. Lives at the root of a single-service repo as `qavor.yaml`, or under a sub-directory of a multi-service repo (e.g. `service-foo/qavor.yaml`). A service manifest never defines the workspace repo set — the list of repositories comes solely from the `kind: project` manifest's `repositories:` list.
  */
 export interface ServiceManifest {
   kind: 'service';
@@ -169,7 +141,7 @@ export interface ServiceManifest {
   name: Name;
   description?: string;
   /**
-   * Additional group memberships. When this manifest is at the root of a repo, these also define repo group membership.
+   * Additional group memberships for this service.
    */
   groups?: Name[];
   /**
@@ -255,6 +227,19 @@ export interface EnvBlock {
   docker?: EnvMap;
 }
 /**
+ * Lifecycle hooks. Each hook list runs in the manifest's directory at the corresponding lifecycle event.
+ */
+export interface Hooks {
+  pre_clone?: HookCommands;
+  post_clone?: HookCommands;
+  pre_prepare?: HookCommands;
+  post_prepare?: HookCommands;
+  pre_run?: HookCommands;
+  post_run?: HookCommands;
+  pre_stop?: HookCommands;
+  post_stop?: HookCommands;
+}
+/**
  * Externally provided stateful service (postgres, kafka, redis, ...). Lives at the root of a stateful-dep repo as `qavor.yaml`, or under a sub-directory of a deps repo (e.g. `postgresql/qavor.yaml`). At v0 stateful services run via `docker-compose` and qavor owns the generated compose project (per ADR-005).
  */
 export interface StatefulManifest {
@@ -263,7 +248,7 @@ export interface StatefulManifest {
   name: Name;
   description?: string;
   /**
-   * Additional group memberships. When this manifest is at the root of a repo, these also define repo group membership.
+   * Additional group memberships for this stateful service.
    */
   groups?: Name[];
   profiles?: Name[];
