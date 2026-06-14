@@ -95,7 +95,17 @@ export async function runCli(
   const tsxLoaderUrl = `file://${tsxLoader}`;
   const baseEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (typeof v === 'string') baseEnv[k] = v;
-  const env = { ...baseEnv, ...(opts.env ?? {}) };
+  // Pin a git identity so commits are hermetic: cloned workspace repos have no
+  // local user.name/user.email, and CI machines have no global git config, so
+  // `git commit` would otherwise fail with exit 128. Locally this is masked by
+  // the developer's global config.
+  const gitIdentity: Record<string, string> = {
+    GIT_AUTHOR_NAME: 'Qavor Test',
+    GIT_AUTHOR_EMAIL: 'qavor-test@example.com',
+    GIT_COMMITTER_NAME: 'Qavor Test',
+    GIT_COMMITTER_EMAIL: 'qavor-test@example.com',
+  };
+  const env = { ...baseEnv, ...gitIdentity, ...(opts.env ?? {}) };
   const res = await execa(
     process.execPath,
     ['--no-warnings', '--import', tsxLoaderUrl, entry, ...args],
