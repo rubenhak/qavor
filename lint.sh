@@ -17,15 +17,19 @@ pnpm install --frozen-lockfile
 echo ""
 if $FIX; then
   echo "▶ Formatting and auto-fixing (biome check --write)..."
-  pnpm biome check --write .
+  pnpm format
 else
   echo "▶ Lint + format check (biome check)..."
-  pnpm biome check .
+  pnpm lint
 fi
 
 echo ""
 echo "▶ Checking generated manifest types..."
 pnpm gen:types:check
+
+echo ""
+echo "▶ Linting..."
+pnpm lint
 
 echo ""
 echo "▶ Typechecking..."

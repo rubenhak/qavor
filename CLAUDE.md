@@ -24,7 +24,8 @@ The CI gate is: `pnpm lint && pnpm test && pnpm gen:types:check && pnpm typechec
 
 To run a single test file: `node --import tsx --test test/<file>.test.ts`
 
-**Always run the tests and linter after making changes, and fix any failures before declaring the work done.** Do not leave the tree with failing tests or lint errors.
+
+**Always run the tests and linter after making changes, and fix any failures before declaring the work done.** Do not leave the tree with failing tests or lint errors. After successful completion also run the `pnpm format` and `pnpm build` before committing the changes.
 
 ## Architecture
 

@@ -125,11 +125,18 @@ export function registerGitCommands(program: Command): void {
   });
 
   repoOption(
-    git.command('sync').description('Run `git fetch && git pull --ff-only` across selected repos.'),
+    git
+      .command('sync')
+      .description(
+        'Clone any missing repos, then `git fetch && git pull --ff-only` across the rest.',
+      ),
   ).action(async (opts: { repo?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
+    const logger = getLogger();
+    // Keep every selected repo: a repo that isn't on disk yet is cloned here
+    // rather than skipped, so `sync` reconciles the workspace to the manifest.
     const { repos } = await loadProjectRepos();
-    const selected = await reposPresent(selectRepos(repos, opts.repo));
+    const selected = selectRepos(repos, opts.repo);
     const plan = resolveExecutionPlan(root, 'parallel');
     const view = createActionView(
       selected.map((r) => r.name),
@@ -139,12 +146,18 @@ export function registerGitCommands(program: Command): void {
       selected,
       async (r, index): Promise<ActionRow> => {
         let row: ActionRow;
-        try {
-          await gitFetch(r.dir);
-          await gitPullFastForward(r.dir);
-          row = { repo: r.name, outcome: 'changed', status: 'synced' };
-        } catch (err) {
-          row = failRow(r.name, err);
+        if (!(await isGitRepo(r.dir))) {
+          // Missing on disk: clone it (cloneOne handles the project repo and
+          // optional-repo cases too).
+          row = await cloneOne(r, logger);
+        } else {
+          try {
+            await gitFetch(r.dir);
+            await gitPullFastForward(r.dir);
+            row = { repo: r.name, outcome: 'changed', status: 'synced' };
+          } catch (err) {
+            row = failRow(r.name, err);
+          }
         }
         view.resolve(index, row);
         return row;
@@ -166,7 +179,10 @@ export function registerGitCommands(program: Command): void {
   ).action(async (opts: { repo?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const { workspaceRoot, repos } = await loadProjectRepos();
-    const selected = await reposPresent(selectRepos(repos, opts.repo));
+    // Keep every selected repo (not just the present ones): repos enumerated in
+    // the manifest but not yet cloned are reported as `missing` rather than
+    // silently dropped.
+    const selected = selectRepos(repos, opts.repo);
     const plan = resolveExecutionPlan(root, 'parallel');
 
     // Live table on stdout: rows appear up-front with a spinner and fill in as
@@ -180,16 +196,31 @@ export function registerGitCommands(program: Command): void {
     const rows = await runFanOut(
       selected,
       async (r, index): Promise<StatusRow> => {
-        const s = await readRepoStatus(r.dir);
-        const row: StatusRow = {
-          repo: r.name,
-          branch: s.branch,
-          ahead: s.ahead,
-          behind: s.behind,
-          dirty: s.dirtyCount,
-          last_commit: s.lastCommit,
-          last_commit_subject: s.lastCommitSubject,
-        };
+        let row: StatusRow;
+        if (!(await isGitRepo(r.dir))) {
+          row = {
+            repo: r.name,
+            branch: null,
+            ahead: 0,
+            behind: 0,
+            dirty: 0,
+            last_commit: null,
+            last_commit_subject: null,
+            missing: true,
+          };
+        } else {
+          const s = await readRepoStatus(r.dir);
+          row = {
+            repo: r.name,
+            branch: s.branch,
+            ahead: s.ahead,
+            behind: s.behind,
+            dirty: s.dirtyCount,
+            last_commit: s.lastCommit,
+            last_commit_subject: s.lastCommitSubject,
+            missing: false,
+          };
+        }
         view.resolve(index, row);
         return row;
       },

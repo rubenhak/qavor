@@ -17,6 +17,8 @@ export interface StatusRow {
   dirty: number;
   last_commit: string | null;
   last_commit_subject: string | null;
+  /** True when the repo is enumerated in the manifest but not yet cloned. */
+  missing: boolean;
 }
 
 /** The status view is just a {@link LiveView} specialized to {@link StatusRow}. */
@@ -50,6 +52,20 @@ function resolvedCells(
   subjectW: number,
 ): string[] {
   const repo = c.bold(fit(r.repo, repoW));
+
+  // A repo enumerated in the manifest but not cloned: render a dim placeholder
+  // row so the gap is visible without implying a (nonexistent) working tree.
+  if (r.missing) {
+    return [
+      c.red(g.missing),
+      repo,
+      c.dim(fit('—', BRANCH_W)),
+      c.dim(fit('·', SYNC_W)),
+      c.dim(fit('—', CHANGES_W)),
+      c.dim(fit('—', COMMIT_W)),
+      c.dim(fit('not cloned', subjectW)),
+    ];
+  }
 
   const detached = r.branch === null;
   const dirty = r.dirty > 0;
@@ -128,14 +144,16 @@ const renderer: LiveRenderer<StatusRow> = {
     const total = present.length;
     const count = (pred: (r: StatusRow) => boolean): number => present.filter(pred).length;
     const bits = [`${total} repo${total === 1 ? '' : 's'}`];
-    const dirtyN = count((r) => r.dirty > 0);
-    const aheadN = count((r) => r.ahead > 0);
-    const behindN = count((r) => r.behind > 0);
-    const detachedN = count((r) => r.branch === null);
+    const dirtyN = count((r) => !r.missing && r.dirty > 0);
+    const aheadN = count((r) => !r.missing && r.ahead > 0);
+    const behindN = count((r) => !r.missing && r.behind > 0);
+    const detachedN = count((r) => !r.missing && r.branch === null);
+    const missingN = count((r) => r.missing);
     if (dirtyN) bits.push(c.yellow(`${dirtyN} dirty`));
     if (aheadN) bits.push(c.green(`${aheadN} ahead`));
     if (behindN) bits.push(c.red(`${behindN} behind`));
     if (detachedN) bits.push(c.magenta(`${detachedN} detached`));
+    if (missingN) bits.push(c.red(`${missingN} missing`));
     return ['', c.dim('Summary: ') + bits.join(c.dim('  ·  '))];
   },
 };

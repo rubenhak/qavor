@@ -95,6 +95,7 @@ export interface Glyphs {
   diverged: string;
   detached: string;
   noUpstream: string;
+  missing: string;
   arrowUp: string;
   arrowDown: string;
 }
@@ -107,6 +108,7 @@ const EMOJI: Glyphs = {
   diverged: '⇅',
   detached: '⚠',
   noUpstream: '∅',
+  missing: '⊘',
   arrowUp: '↑',
   arrowDown: '↓',
 };
@@ -119,6 +121,7 @@ const ASCII: Glyphs = {
   diverged: 'x',
   detached: '!',
   noUpstream: '-',
+  missing: '?',
   arrowUp: '+',
   arrowDown: '-',
 };

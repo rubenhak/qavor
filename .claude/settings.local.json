@@ -45,7 +45,8 @@
       "Bash(pnpm gen:types)",
       "Bash(grep -rn \"kind: repo\\\\|kind:repo\\\\|'repo'\\\\|\\\\\"repo\\\\\"\\\\| repo \\\\`\\\\|\\\\`repo\\\\`\" docs/ README.md AGENTS.md test/)",
       "Bash(cd *)",
-      "Bash(perl -0pi -e 's/# optional additional group membership \\\\\\(repo-level groups are declared in the kind: repo manifest\\\\\\)/# optional additional group membership/g' docs/manifests.md)"
+      "Bash(perl -0pi -e 's/# optional additional group membership \\\\\\(repo-level groups are declared in the kind: repo manifest\\\\\\)/# optional additional group membership/g' docs/manifests.md)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

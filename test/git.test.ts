@@ -71,6 +71,77 @@ test('qavor status: human output renders a table + summary footer (ASCII fallbac
   }
 });
 
+test('qavor status: reports repos listed in the manifest but not cloned as missing', async () => {
+  const fixtures = await buildFixtureRepos({ services: ['web', 'auth'] });
+  const ws = await makeTempDir('qavor-status-missing-');
+  try {
+    await runCli(['init', fixtures.projectRepo, '--into', ws]);
+    // Clone only web; auth stays missing.
+    await runCli(['git', 'clone', '--repo', 'web'], { cwd: ws });
+    const status = await runCli(['git', 'status', '--json'], { cwd: ws });
+    assert.equal(status.exitCode, 0, `status failed: ${status.stderr}`);
+    const parsed = JSON.parse(status.stdout);
+    const web = parsed.repos.find((r: { repo: string }) => r.repo === 'web');
+    const auth = parsed.repos.find((r: { repo: string }) => r.repo === 'auth');
+    assert.ok(web, 'expected web entry');
+    assert.ok(auth, 'expected auth entry even though it is not cloned');
+    assert.equal(web.missing, false);
+    assert.equal(auth.missing, true);
+  } finally {
+    await cleanup(fixtures.base);
+    await cleanup(ws);
+  }
+});
+
+test('qavor status: human output marks missing repos and tallies them in the summary', async () => {
+  const fixtures = await buildFixtureRepos({ services: ['web', 'auth'] });
+  const ws = await makeTempDir('qavor-status-missing-human-');
+  try {
+    await runCli(['init', fixtures.projectRepo, '--into', ws]);
+    await runCli(['git', 'clone', '--repo', 'web'], { cwd: ws });
+    const status = await runCli(['git', 'status'], {
+      cwd: ws,
+      env: { NO_COLOR: '1', FORCE_COLOR: '0' },
+    });
+    assert.equal(status.exitCode, 0, `status failed: ${status.stderr}`);
+    assert.match(status.stdout, /\bauth\b.*not cloned/);
+    assert.match(status.stdout, /Summary:.*1 missing/s);
+  } finally {
+    await cleanup(fixtures.base);
+    await cleanup(ws);
+  }
+});
+
+test('qavor git sync: clones repos that are missing from the workspace', async () => {
+  const fixtures = await buildFixtureRepos({ services: ['web', 'auth'] });
+  const ws = await makeTempDir('qavor-sync-clone-');
+  try {
+    await runCli(['init', fixtures.projectRepo, '--into', ws]);
+    // Clone only web; sync should clone the missing auth repo.
+    await runCli(['git', 'clone', '--repo', 'web'], { cwd: ws });
+    let authExists = true;
+    try {
+      await fs.stat(path.join(ws, 'auth.git'));
+    } catch {
+      authExists = false;
+    }
+    assert.equal(authExists, false, 'auth.git should not exist before sync');
+
+    const sync = await runCli(['git', 'sync'], { cwd: ws });
+    assert.equal(sync.exitCode, 0, `sync failed: ${sync.stderr}`);
+    const authStat = await fs.stat(path.join(ws, 'auth.git'));
+    assert.ok(authStat.isDirectory(), 'sync should have cloned auth.git');
+
+    const status = await runCli(['git', 'status', '--json'], { cwd: ws });
+    const parsed = JSON.parse(status.stdout);
+    const auth = parsed.repos.find((r: { repo: string }) => r.repo === 'auth');
+    assert.equal(auth.missing, false, 'auth should be present after sync');
+  } finally {
+    await cleanup(fixtures.base);
+    await cleanup(ws);
+  }
+});
+
 test('qavor git commit: stages and commits with -m across repos', async () => {
   const fixtures = await buildFixtureRepos({ services: ['web'] });
   const ws = await makeTempDir('qavor-commit-');
