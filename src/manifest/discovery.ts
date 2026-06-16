@@ -131,8 +131,18 @@ export async function buildWorkspaceRegistry(opts: DiscoveryOptions): Promise<Wo
   const issues: ValidationIssue[] = [];
   const all: RegistryEntry[] = [];
 
+  // Dedupe by resolved directory: a repo may be reachable under more than one
+  // key (e.g. its own name in `repositories:` and the `__project__` sentinel
+  // when it is the project repo). Scanning the same dir twice would load every
+  // manifest twice and raise spurious duplicate-name issues. First key wins.
   const reposList: { name: string; dir: string }[] = [];
-  for (const [name, dir] of opts.repos) reposList.push({ name, dir });
+  const seenDirs = new Set<string>();
+  for (const [name, dir] of opts.repos) {
+    const real = path.resolve(dir);
+    if (seenDirs.has(real)) continue;
+    seenDirs.add(real);
+    reposList.push({ name, dir });
+  }
 
   await pMap(
     reposList,

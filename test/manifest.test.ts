@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
-import { discoverManifestFiles } from '../src/manifest/discovery.js';
+import { buildWorkspaceRegistry, discoverManifestFiles } from '../src/manifest/discovery.js';
 import { loadManifestFile } from '../src/manifest/loader.js';
 import { isKnownKind, validateDocument } from '../src/manifest/validator.js';
 import { cleanup, makeTempDir } from './helpers/fixtures.js';
@@ -138,6 +138,34 @@ test('discoverManifestFiles: still prunes SKIP_DIRS like node_modules', async ()
     const skipped = await writeYaml(buried, 'qavor.yaml', 'kind: profile\nname: skip\n');
     const found = await discoverManifestFiles(dir);
     assert.ok(!found.includes(skipped), 'manifest under node_modules should be skipped');
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test('buildWorkspaceRegistry: a repo reachable under two keys is scanned once', async () => {
+  const dir = await makeTempDir();
+  try {
+    const profDir = path.join(dir, 'profiles', 'node-library');
+    await fs.mkdir(profDir, { recursive: true });
+    await writeYaml(profDir, 'qavor.yaml', 'kind: profile\nname: node_library\n');
+
+    // Same directory under two keys: its repo name and the project sentinel.
+    const registry = await buildWorkspaceRegistry({
+      workspaceRoot: dir,
+      repos: new Map([
+        ['workspace', dir],
+        ['__project__', dir],
+      ]),
+    });
+
+    const profiles = registry.entries.filter((e) => e.kind === 'profile');
+    assert.equal(profiles.length, 1, 'profile should be loaded exactly once');
+    assert.equal(
+      registry.issues.length,
+      0,
+      `unexpected issues: ${JSON.stringify(registry.issues)}`,
+    );
   } finally {
     await cleanup(dir);
   }
