@@ -101,11 +101,15 @@ export function registerManifests(program: Command): void {
       if (registry.issues.length > 0) {
         const c = palette(colorEnabled());
         emit('');
-        emit(
-          c.yellow(
-            `⚠ ${registry.issues.length} manifest issue(s) found. Run \`qavor validate\` for details.`,
-          ),
-        );
+        emit(c.yellow(`⚠ ${registry.issues.length} manifest issue(s) found:`));
+        for (const issue of registry.issues) {
+          const loc = c.dim(
+            `${path.relative(ws.paths.root, issue.file)}:${issue.line}:${issue.column}`,
+          );
+          const kind = c.dim(`[${issue.kind}]`);
+          const where = issue.path ? c.dim(` ${issue.path}:`) : '';
+          emit(`  ${c.red('✗')} ${loc} ${kind}${where} ${issue.message}`);
+        }
       }
       logger.debug({ repos: repoNodes.length }, 'manifests rendered');
     });

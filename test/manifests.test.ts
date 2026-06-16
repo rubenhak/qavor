@@ -82,6 +82,27 @@ test('qavor manifests: marks repos that are not cloned yet', async () => {
   }
 });
 
+test('qavor manifests: prints each manifest issue with its location and message', async () => {
+  const { base, ws } = await setupClonedWorkspace();
+  try {
+    // Introduce a dangling cross-reference: the web service requires a
+    // stateful that no manifest defines.
+    const webManifest = path.join(ws, 'web.git', 'qavor.yaml');
+    const original = await fs.readFile(webManifest, 'utf8');
+    await fs.writeFile(webManifest, `${original.trimEnd()}\nrequire:\n  - stateful: ghost-db\n`);
+
+    const r = await runCli(['manifests'], { cwd: ws });
+    assert.equal(r.exitCode, 0, r.stderr);
+    // The summary reports the count and the detail line names the offender.
+    assert.match(r.stdout, /1 manifest issue\(s\) found:/);
+    assert.match(r.stdout, /ghost-db/);
+    assert.match(r.stdout, /web\.git\/qavor\.yaml:\d+:\d+/);
+  } finally {
+    await cleanup(base);
+    await cleanup(ws);
+  }
+});
+
 test('qavor manifests: groups multiple documents from a single multi-doc file', async () => {
   const { base, ws } = await setupClonedWorkspace();
   try {
