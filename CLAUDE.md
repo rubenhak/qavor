@@ -24,6 +24,17 @@ The CI gate is: `pnpm lint && pnpm test && pnpm gen:types:check && pnpm typechec
 
 To run a single test file: `node --import tsx --test test/<file>.test.ts`
 
+### Running the CLI during development
+
+To exercise the qavor CLI against a real workspace while developing, use the repo's helper scripts (both safe to invoke from any working directory):
+
+```bash
+./prepare.sh            # pnpm install + pnpm build → refreshes dist/index.js
+./run.sh <args>         # runs the freshly built dist/index.js with your args
+```
+
+Run `./prepare.sh` once (and again after any source change) to rebuild, then `./run.sh` to invoke the CLI. Because `run.sh` exec's the local `dist/index.js`, you can `cd` into an external workspace and call `/path/to/qavor.git/run.sh manifests` to test the current branch — **do not** rely on a globally-installed `qavor`, which is likely stale and will not reflect your changes.
+
 
 **Always run the tests and linter after making changes, and fix any failures before declaring the work done.** Do not leave the tree with failing tests or lint errors. After successful completion also run the `pnpm format` and `pnpm build` before committing the changes.
 
