@@ -7,7 +7,7 @@ import { type LoadedDocument, loadManifestFile } from './loader.js';
 import type { ManifestKind, Requirement } from './types/index.js';
 import { formatIssue, isKnownKind, type ValidationIssue, validateDocument } from './validator.js';
 
-const MAX_DEPTH = 4;
+const MAX_DEPTH = 5;
 const SKIP_DIRS = new Set([
   '.git',
   '.qavor',
@@ -28,7 +28,8 @@ const SKIP_DIRS = new Set([
  *
  *   - Root `qavor.yaml` (single or multi-document).
  *   - Every `qavor.yaml` under a `qavor/` directory at the repo root.
- *   - Every `<sub-dir>/qavor.yaml` under the repo root, to depth MAX_DEPTH.
+ *   - Every `<sub-dir>/qavor.yaml` under the repo root, at any depth (pruning the
+ *     directories in SKIP_DIRS and bounded only by MAX_DEPTH as a runaway guard).
  *
  * Returns absolute file paths.
  */
