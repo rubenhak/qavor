@@ -1,6 +1,10 @@
 import type { Command } from 'commander';
 import { composeUnitEnv, parseCliEnv, type ResolvedEnv } from '../../env/composer.js';
-import { buildWorkspaceRegistry, type RegistryEntry } from '../../manifest/discovery.js';
+import {
+  buildWorkspaceRegistry,
+  type RegistryEntry,
+  reportRegistryIssues,
+} from '../../manifest/discovery.js';
 import type { ProjectManifest } from '../../manifest/types/index.js';
 import { resolveJobs } from '../../util/concurrency.js';
 import { ManifestError, UserError } from '../../util/exit-codes.js';
@@ -70,6 +74,11 @@ export function registerResolveEnv(program: Command): void {
           repos: repoMap,
           concurrency: resolveJobs(root.jobs),
         });
+        if (reportRegistryIssues(registry.issues)) {
+          throw new ManifestError(
+            `Workspace has ${registry.issues.length} manifest issue(s); fix them before resolving env.`,
+          );
+        }
 
         const target: RegistryEntry | undefined = registry.byName.get(opts.only);
         if (!target) {

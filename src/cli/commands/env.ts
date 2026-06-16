@@ -1,10 +1,10 @@
 import type { Command } from 'commander';
 import { composeServiceEnv, parseCliEnv } from '../../env/composer.js';
-import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
+import { buildWorkspaceRegistry, reportRegistryIssues } from '../../manifest/discovery.js';
 import { type LoadedDocument, loadManifestFile } from '../../manifest/loader.js';
 import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
 import { resolveJobs } from '../../util/concurrency.js';
-import { UserError } from '../../util/exit-codes.js';
+import { ManifestError, UserError } from '../../util/exit-codes.js';
 import { emit, emitJson } from '../../util/logger.js';
 import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
 import { resolveRepos } from '../../workspace/repos.js';
@@ -37,6 +37,11 @@ export function registerEnv(program: Command): void {
         repos: repoMap,
         concurrency: resolveJobs(root.jobs),
       });
+      if (reportRegistryIssues(registry.issues)) {
+        throw new ManifestError(
+          `Workspace has ${registry.issues.length} manifest issue(s); fix them before resolving env.`,
+        );
+      }
       const entry = registry.entries.find((e) => e.kind === 'service' && e.name === service);
       if (!entry) throw new UserError(`Service '${service}' not found in workspace.`);
 

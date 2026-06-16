@@ -2,9 +2,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import pMap from 'p-map';
 import { isDirectory } from '../util/fs.js';
+import { getLogger } from '../util/logger.js';
 import { type LoadedDocument, loadManifestFile } from './loader.js';
-import type { ManifestKind } from './types/index.js';
-import { isKnownKind, type ValidationIssue, validateDocument } from './validator.js';
+import type { ManifestKind, Requirement } from './types/index.js';
+import { formatIssue, isKnownKind, type ValidationIssue, validateDocument } from './validator.js';
 
 const MAX_DEPTH = 4;
 const SKIP_DIRS = new Set([
@@ -208,5 +209,153 @@ export async function buildWorkspaceRegistry(opts: DiscoveryOptions): Promise<Wo
     if (!existing) byName.set(key, entry);
   }
 
+  // Semantic pass: every `require:` / `profiles:` reference must resolve to a
+  // manifest that actually exists in the workspace.
+  checkCrossReferences(all, issues);
+
   return { byName, entries: all, issues };
+}
+
+/** Strip a `<repo>:<name>` qualifier down to the bare reference name. */
+function bareRef(ref: string): string {
+  return ref.includes(':') ? ref.slice(ref.lastIndexOf(':') + 1) : ref;
+}
+
+function refIssue(entry: RegistryEntry, pointer: string, message: string): ValidationIssue {
+  const pos = entry.position(pointer);
+  return {
+    file: pos.file,
+    line: pos.line,
+    column: pos.column,
+    kind: entry.kind,
+    path: pointer,
+    message,
+  };
+}
+
+/**
+ * Validate cross-manifest references after all documents are loaded and
+ * schema-valid: `require:` deps (service/stateful/group) and `profiles:` must
+ * each point at a manifest declared somewhere in the workspace. Optional
+ * requirements are allowed to dangle. Group references resolve against the
+ * union of every declared group (project `groups`, repo-inline groups, and
+ * service/stateful `groups` memberships).
+ */
+function checkCrossReferences(entries: RegistryEntry[], issues: ValidationIssue[]): void {
+  const serviceNames = new Set<string>();
+  const statefulNames = new Set<string>();
+  const profileNames = new Set<string>();
+  const groupNames = new Set<string>();
+
+  for (const e of entries) {
+    if (!e.name) continue;
+    if (e.kind === 'service') serviceNames.add(e.name);
+    else if (e.kind === 'stateful') statefulNames.add(e.name);
+    else if (e.kind === 'profile') profileNames.add(e.name);
+  }
+
+  // Collect every declared group name.
+  for (const e of entries) {
+    const ownGroups = (e.data as { groups?: unknown }).groups;
+    if (Array.isArray(ownGroups)) {
+      for (const g of ownGroups) if (typeof g === 'string') groupNames.add(g);
+    }
+    if (e.kind === 'project') {
+      const groups = (e.data as { groups?: Record<string, unknown> }).groups;
+      if (groups && typeof groups === 'object') {
+        for (const g of Object.keys(groups)) groupNames.add(g);
+      }
+      const repos = (e.data as { repositories?: unknown[] }).repositories;
+      if (Array.isArray(repos)) {
+        for (const r of repos) {
+          const repoGroups = (r as { groups?: unknown })?.groups;
+          if (Array.isArray(repoGroups)) {
+            for (const g of repoGroups) if (typeof g === 'string') groupNames.add(g);
+          }
+        }
+      }
+    }
+  }
+
+  for (const e of entries) {
+    if (e.kind !== 'service' && e.kind !== 'stateful') continue;
+    const label = e.name || e.kind;
+
+    const requires = (e.data as { require?: Requirement[] }).require;
+    if (Array.isArray(requires)) {
+      requires.forEach((req, i) => {
+        if (!req || typeof req !== 'object' || req.optional) return;
+        const ptr = `/require/${i}`;
+        if (typeof req.service === 'string' && req.service.length > 0) {
+          const bare = bareRef(req.service);
+          if (!serviceNames.has(bare)) {
+            issues.push(
+              refIssue(
+                e,
+                ptr,
+                statefulNames.has(bare)
+                  ? `'${label}' requires service '${req.service}', but '${bare}' is declared as a stateful.`
+                  : `'${label}' requires service '${req.service}', which is not defined in the workspace.`,
+              ),
+            );
+          }
+        } else if (typeof req.stateful === 'string' && req.stateful.length > 0) {
+          const bare = bareRef(req.stateful);
+          if (!statefulNames.has(bare)) {
+            issues.push(
+              refIssue(
+                e,
+                ptr,
+                serviceNames.has(bare)
+                  ? `'${label}' requires stateful '${req.stateful}', but '${bare}' is declared as a service.`
+                  : `'${label}' requires stateful '${req.stateful}', which is not defined in the workspace.`,
+              ),
+            );
+          }
+        } else if (typeof req.group === 'string' && req.group.length > 0) {
+          if (!groupNames.has(req.group)) {
+            issues.push(
+              refIssue(
+                e,
+                ptr,
+                `'${label}' requires group '${req.group}', which is not defined in any manifest.`,
+              ),
+            );
+          }
+        }
+      });
+    }
+
+    const profiles = (e.data as { profiles?: unknown[] }).profiles;
+    if (Array.isArray(profiles)) {
+      profiles.forEach((p, i) => {
+        if (typeof p !== 'string' || profileNames.has(p)) return;
+        issues.push(
+          refIssue(
+            e,
+            `/profiles/${i}`,
+            `'${label}' references profile '${p}', which is not defined in the workspace.`,
+          ),
+        );
+      });
+    }
+  }
+}
+
+/**
+ * Emit every manifest issue (parse, schema, and cross-reference errors)
+ * collected while building the workspace registry. Logs go to stderr in both
+ * human and `--json` (NDJSON) modes. Returns true when any issue was reported,
+ * so callers can decide whether to fail closed.
+ */
+export function reportRegistryIssues(issues: ValidationIssue[]): boolean {
+  if (issues.length === 0) return false;
+  const logger = getLogger();
+  for (const issue of issues) {
+    logger.error(
+      { file: issue.file, line: issue.line, column: issue.column, path: issue.path },
+      formatIssue(issue),
+    );
+  }
+  return true;
 }

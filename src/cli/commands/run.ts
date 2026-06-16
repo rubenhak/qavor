@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Command } from 'commander';
 import { parseCliEnv } from '../../env/composer.js';
-import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
+import { buildWorkspaceRegistry, reportRegistryIssues } from '../../manifest/discovery.js';
 import { type LoadedDocument, loadManifestFile } from '../../manifest/loader.js';
 import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
 import { tailFile } from '../../supervisor/logs.js';
@@ -11,7 +11,7 @@ import {
   stopNativeService,
 } from '../../supervisor/native.js';
 import { resolveJobs } from '../../util/concurrency.js';
-import { UserError } from '../../util/exit-codes.js';
+import { ManifestError, UserError } from '../../util/exit-codes.js';
 import { emit, emitJson, getLogger } from '../../util/logger.js';
 import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
 import { resolveRepos } from '../../workspace/repos.js';
@@ -40,6 +40,11 @@ async function findService(
     repos: repoMap,
     concurrency: jobs,
   });
+  if (reportRegistryIssues(registry.issues)) {
+    throw new ManifestError(
+      `Workspace has ${registry.issues.length} manifest issue(s); fix them before running services.`,
+    );
+  }
   const entry = registry.entries.find((e) => e.kind === 'service' && e.name === name);
   if (!entry) throw new UserError(`Service '${name}' not found in workspace.`);
   const docs = await loadManifestFile(entry.file);

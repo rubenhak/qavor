@@ -5,6 +5,7 @@ import { execa } from 'execa';
 import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
 import { type LoadedDocument, loadManifestFile } from '../../manifest/loader.js';
 import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
+import { formatIssue } from '../../manifest/validator.js';
 import { resolveJobs } from '../../util/concurrency.js';
 import { RuntimeFailure } from '../../util/exit-codes.js';
 import { ensureDir, globalCacheDir } from '../../util/fs.js';
@@ -127,6 +128,21 @@ export function registerDoctor(program: Command): void {
           repos: repoMap,
           concurrency: resolveJobs(root.jobs),
         });
+
+        // Surface manifest problems (parse, schema, and cross-reference errors)
+        // discovered while loading the workspace.
+        if (registry.issues.length === 0) {
+          checks.push({ name: 'manifests valid', status: 'ok' });
+        } else {
+          for (const issue of registry.issues) {
+            checks.push({
+              name: 'manifest',
+              status: 'fail',
+              message: formatIssue(issue),
+            });
+          }
+        }
+
         for (const entry of registry.entries) {
           if (entry.kind !== 'service') continue;
           const svc = entry.data as unknown as ServiceManifest;

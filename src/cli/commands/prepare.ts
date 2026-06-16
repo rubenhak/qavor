@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { parseCliEnv } from '../../env/composer.js';
-import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
+import { buildWorkspaceRegistry, reportRegistryIssues } from '../../manifest/discovery.js';
 import type { LoadedDocument } from '../../manifest/loader.js';
 import { loadManifestFile } from '../../manifest/loader.js';
 import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
@@ -46,12 +46,7 @@ export function registerPrepare(program: Command): void {
           concurrency: plan.concurrency,
         });
 
-        for (const issue of registry.issues) {
-          logger.warn(
-            { file: issue.file, line: issue.line, message: issue.message },
-            'manifest issue',
-          );
-        }
+        reportRegistryIssues(registry.issues);
 
         let services = registry.entries.filter((e) => e.kind === 'service');
         if (opts.service && opts.service.length > 0) {
