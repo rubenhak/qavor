@@ -247,8 +247,28 @@ When the same env key is set in multiple places, later layers win:
 3. Workspace `.env`
 4. CLI `--env KEY=VAL`
 
+The mode-specific dotenv file is `.env.native` in native mode and `.env.docker`
+(with `.env.container` accepted as an alias) in docker mode.
+
 `qavor env <service>` prints the fully-resolved value with provenance for each
 key, so this chain is always inspectable.
+
+`qavor resolve-env --only <service-or-stateful>` resolves the same chain
+**including `require:` dependencies** (service deps contribute their full env;
+stateful deps contribute only their `env.publish` contract) and can emit a
+shell-sourceable form:
+
+```bash
+# inspect (human-readable, secrets redacted)
+qavor resolve-env --only auth
+
+# source the resolved env into the current shell (real values, incl. secrets)
+eval "$(qavor resolve-env --only auth --format export)"
+#   or: source <(qavor resolve-env --only auth --format export)
+
+# machine-readable
+qavor resolve-env --only auth --json
+```
 
 
 

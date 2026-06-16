@@ -1,6 +1,14 @@
 import path from 'node:path';
-import type { LoadedDocument } from '../manifest/loader.js';
-import type { EnvMap, EnvSpec, ServiceManifest } from '../manifest/types/index.js';
+import type { RegistryEntry, WorkspaceRegistry } from '../manifest/discovery.js';
+import type { LoadedDocument, PositionResolver } from '../manifest/loader.js';
+import type {
+  EnvBlock,
+  EnvMap,
+  EnvSpec,
+  Requirement,
+  ServiceManifest,
+  StatefulEnvBlock,
+} from '../manifest/types/index.js';
 import { ManifestError, UserError } from '../util/exit-codes.js';
 import { loadDotenvFile } from './dotenv.js';
 
@@ -52,6 +60,19 @@ export interface ServiceCompositionInput {
   cliEnv?: Record<string, string>;
 }
 
+export interface UnitCompositionInput {
+  /** Active run mode for the target unit. */
+  mode: RunMode;
+  /** Registry entry of the service/stateful whose env to resolve. */
+  target: RegistryEntry;
+  /** Workspace registry, used to resolve `require:` dependencies by name. */
+  registry: WorkspaceRegistry;
+  /** Absolute path to the workspace root. */
+  workspaceRoot: string;
+  /** CLI --env KEY=VAL entries. */
+  cliEnv?: Record<string, string>;
+}
+
 /**
  * Compose env for a service per the MVP precedence (later wins):
  *
@@ -67,94 +88,64 @@ export interface ServiceCompositionInput {
  */
 export async function composeServiceEnv(input: ServiceCompositionInput): Promise<ResolvedEnv> {
   const issues: ManifestComposeIssue[] = [];
+  const layers = await collectOwnEnvLayers({
+    env: input.service.env,
+    mode: input.mode,
+    manifestDir: path.dirname(input.serviceDoc.file),
+    file: input.serviceDoc.file,
+    position: input.serviceDoc.position,
+    layerPrefix: 'service',
+  });
+  await loadWorkspaceDotenv(layers, input.workspaceRoot);
+  appendCliLayers(layers, input.cliEnv);
+  return interpolateLayers(layers, issues);
+}
+
+/**
+ * Compose env for any unit (service or stateful) by name, resolving the full
+ * documented precedence chain including `require:` dependencies. Mirrors
+ * {@link composeServiceEnv} but additionally walks the dependency graph:
+ *
+ *   1. Required deps (recursive, lowest precedence). Service deps contribute
+ *      their full composed env; stateful deps contribute only `env.publish`.
+ *   2. The unit's own env (common → mode → .env → .env.<mode>/.env.container).
+ *   3. Workspace `.env`.
+ *   4. CLI `--env KEY=VAL`.
+ */
+export async function composeUnitEnv(input: UnitCompositionInput): Promise<ResolvedEnv> {
+  const issues: ManifestComposeIssue[] = [];
   const layers: LayerEntry[] = [];
+  const visited = new Set<string>();
 
-  const manifestDir = path.dirname(input.serviceDoc.file);
-  const env = input.service.env;
-  const positionFor = input.serviceDoc.position;
+  // 1. Required dependencies, recursively (lowest precedence).
+  await appendRequireLayers(input.target, input, visited, layers, issues);
 
-  if (env?.common) {
-    pushEnvMap(
-      layers,
-      env.common,
-      'service.env.common',
-      input.serviceDoc.file,
-      positionFor,
-      '/env/common',
-    );
-  }
-  if (input.mode === 'native' && env?.native) {
-    pushEnvMap(
-      layers,
-      env.native,
-      'service.env.native',
-      input.serviceDoc.file,
-      positionFor,
-      '/env/native',
-    );
-  } else if (input.mode === 'docker' && env?.docker) {
-    pushEnvMap(
-      layers,
-      env.docker,
-      'service.env.docker',
-      input.serviceDoc.file,
-      positionFor,
-      '/env/docker',
-    );
-  }
-  // .env next to manifest
-  const baseDotenv = await loadDotenvFile(path.join(manifestDir, '.env'));
-  for (const e of baseDotenv) {
-    layers.push({
-      key: e.key,
-      raw: e.value,
-      layer: 'service.env',
-      file: e.file,
-      line: e.line,
-      spec: null,
-    });
-  }
-  // .env.<mode> next to manifest
-  const modeDotenvFile = path.join(
-    manifestDir,
-    input.mode === 'native' ? '.env.native' : '.env.docker',
+  // 2. The unit's own env.
+  layers.push(
+    ...(await collectOwnEnvLayers({
+      env: entryEnvBlock(input.target),
+      mode: input.mode,
+      manifestDir: input.target.dir,
+      file: input.target.file,
+      position: input.target.position,
+      layerPrefix: input.target.kind,
+    })),
   );
-  const modeDotenv = await loadDotenvFile(modeDotenvFile);
-  for (const e of modeDotenv) {
-    layers.push({
-      key: e.key,
-      raw: e.value,
-      layer: `service.env.${input.mode}`,
-      file: e.file,
-      line: e.line,
-      spec: null,
-    });
+  // A stateful target surfaces its own published contract on top of its env.
+  if (input.target.kind === 'stateful') {
+    layers.push(
+      ...(await resolveStatefulPublishLayers(
+        input.target,
+        input.mode,
+        issues,
+        `${input.target.kind}.publish`,
+      )),
+    );
   }
-  // Workspace .env
-  const wsEnv = await loadDotenvFile(path.join(input.workspaceRoot, '.env'));
-  for (const e of wsEnv) {
-    layers.push({
-      key: e.key,
-      raw: e.value,
-      layer: 'workspace.env',
-      file: e.file,
-      line: e.line,
-      spec: null,
-    });
-  }
-  // CLI overrides
-  if (input.cliEnv) {
-    for (const [k, v] of Object.entries(input.cliEnv)) {
-      layers.push({
-        key: k,
-        raw: v,
-        layer: 'cli.--env',
-        file: '<cli>',
-        line: 0,
-        spec: null,
-      });
-    }
-  }
+
+  // 3 + 4. Workspace .env then CLI overrides.
+  await loadWorkspaceDotenv(layers, input.workspaceRoot);
+  appendCliLayers(layers, input.cliEnv);
 
   return interpolateLayers(layers, issues);
 }
@@ -166,6 +157,216 @@ interface LayerEntry {
   file: string;
   line: number;
   spec: EnvSpec | null;
+}
+
+/** Env block accessor that tolerates both EnvBlock and StatefulEnvBlock. */
+function entryEnvBlock(entry: RegistryEntry): EnvBlock | StatefulEnvBlock | undefined {
+  return (entry.data as { env?: EnvBlock | StatefulEnvBlock }).env;
+}
+
+/**
+ * Build the ordered own-env layers for a single unit (no require deps, no
+ * workspace/CLI): `env.common` → `env.<mode>` → `.env` → `.env.<mode>`. For
+ * docker mode both `.env.docker` and its `.env.container` alias are read (the
+ * latter, when present, layers last and wins).
+ */
+async function collectOwnEnvLayers(args: {
+  env: EnvBlock | StatefulEnvBlock | undefined;
+  mode: RunMode;
+  manifestDir: string;
+  file: string;
+  position: PositionResolver;
+  layerPrefix: string;
+}): Promise<LayerEntry[]> {
+  const { env, mode, manifestDir, file, position, layerPrefix } = args;
+  const layers: LayerEntry[] = [];
+
+  if (env?.common) {
+    pushEnvMap(layers, env.common, `${layerPrefix}.env.common`, file, position, '/env/common');
+  }
+  if (mode === 'native' && env?.native) {
+    pushEnvMap(layers, env.native, `${layerPrefix}.env.native`, file, position, '/env/native');
+  } else if (mode === 'docker' && env?.docker) {
+    pushEnvMap(layers, env.docker, `${layerPrefix}.env.docker`, file, position, '/env/docker');
+  }
+
+  // .env next to the manifest.
+  const baseDotenv = await loadDotenvFile(path.join(manifestDir, '.env'));
+  for (const e of baseDotenv) {
+    layers.push({
+      key: e.key,
+      raw: e.value,
+      layer: `${layerPrefix}.env`,
+      file: e.file,
+      line: e.line,
+      spec: null,
+    });
+  }
+
+  // Mode-specific dotenv files (.env.container is accepted as an alias for
+  // .env.docker, per docs/manifests.md).
+  const modeFiles = mode === 'native' ? ['.env.native'] : ['.env.docker', '.env.container'];
+  for (const name of modeFiles) {
+    const entries = await loadDotenvFile(path.join(manifestDir, name));
+    for (const e of entries) {
+      layers.push({
+        key: e.key,
+        raw: e.value,
+        layer: `${layerPrefix}.env.${mode}`,
+        file: e.file,
+        line: e.line,
+        spec: null,
+      });
+    }
+  }
+
+  return layers;
+}
+
+/** Append workspace-root `.env` layers (precedence above unit env). */
+async function loadWorkspaceDotenv(layers: LayerEntry[], workspaceRoot: string): Promise<void> {
+  const wsEnv = await loadDotenvFile(path.join(workspaceRoot, '.env'));
+  for (const e of wsEnv) {
+    layers.push({
+      key: e.key,
+      raw: e.value,
+      layer: 'workspace.env',
+      file: e.file,
+      line: e.line,
+      spec: null,
+    });
+  }
+}
+
+/** Append CLI `--env KEY=VAL` overrides (highest precedence). */
+function appendCliLayers(layers: LayerEntry[], cliEnv: Record<string, string> | undefined): void {
+  if (!cliEnv) return;
+  for (const [k, v] of Object.entries(cliEnv)) {
+    layers.push({ key: k, raw: v, layer: 'cli.--env', file: '<cli>', line: 0, spec: null });
+  }
+}
+
+/**
+ * Recursively append env layers from a unit's `require:` dependencies. Deeper
+ * (transitive) deps are pushed first so they carry the lowest precedence.
+ * Service deps contribute their full composed env; stateful deps contribute
+ * only their resolved `env.publish` contract. Group requirements are not
+ * resolved for env composition at v0.
+ */
+async function appendRequireLayers(
+  entry: RegistryEntry,
+  ctx: UnitCompositionInput,
+  visited: Set<string>,
+  layers: LayerEntry[],
+  issues: ManifestComposeIssue[],
+): Promise<void> {
+  const id = entry.name || entry.file;
+  if (visited.has(id)) return;
+  visited.add(id);
+
+  const requires = (entry.data as { require?: Requirement[] }).require;
+  if (!Array.isArray(requires)) return;
+
+  for (const req of requires) {
+    const ref = req.service ?? req.stateful;
+    if (typeof ref !== 'string' || ref.length === 0) continue; // group requires: deferred
+    // Cross-repo refs may be `<repo>:<service>`; resolve by the bare name.
+    const depName = ref.includes(':') ? ref.slice(ref.lastIndexOf(':') + 1) : ref;
+    const dep = ctx.registry.byName.get(depName);
+    if (!dep) {
+      if (!req.optional) {
+        const pos = entry.position('/require');
+        issues.push({
+          file: pos.file,
+          line: pos.line,
+          message: `Required dependency '${ref}' of '${entry.name || entry.kind}' was not found in the workspace.`,
+        });
+      }
+      continue;
+    }
+    // Transitive deps first (lower precedence).
+    await appendRequireLayers(dep, ctx, visited, layers, issues);
+    if (dep.kind === 'stateful') {
+      // Stateful deps run in containers at v0 (ADR-005); use their docker env
+      // unless they explicitly pin native mode.
+      const depMode: RunMode =
+        (dep.data as { mode?: string }).mode === 'native' ? 'native' : 'docker';
+      layers.push(
+        ...(await resolveStatefulPublishLayers(
+          dep,
+          depMode,
+          issues,
+          `require:${dep.name}.publish`,
+        )),
+      );
+    } else {
+      layers.push(
+        ...(await collectOwnEnvLayers({
+          env: entryEnvBlock(dep),
+          mode: ctx.mode,
+          manifestDir: dep.dir,
+          file: dep.file,
+          position: dep.position,
+          layerPrefix: `require:${dep.name}`,
+        })),
+      );
+    }
+  }
+}
+
+/**
+ * Resolve a stateful's `env.publish` map. Publish values reference the
+ * stateful's own env (e.g. `${POSTGRES_HOST}`), so we first resolve the
+ * stateful's private env in its own scope, then interpolate publish against
+ * it — only the published keys (with their final values) are returned, so the
+ * stateful's private keys never leak to dependents.
+ */
+async function resolveStatefulPublishLayers(
+  dep: RegistryEntry,
+  mode: RunMode,
+  issues: ManifestComposeIssue[],
+  label: string,
+): Promise<LayerEntry[]> {
+  const env = entryEnvBlock(dep) as StatefulEnvBlock | undefined;
+  const publish = env?.publish;
+  if (!publish) return [];
+
+  const ownLayers = await collectOwnEnvLayers({
+    env,
+    mode,
+    manifestDir: dep.dir,
+    file: dep.file,
+    position: dep.position,
+    layerPrefix: `stateful:${dep.name}`,
+  });
+  const ownScope = interpolateLayers(ownLayers, []);
+
+  const out: LayerEntry[] = [];
+  for (const [key, val] of Object.entries(publish)) {
+    const spec = isEnvSpec(val) ? (val as EnvSpec) : null;
+    const concrete = spec ? (spec.value ?? spec.default) : val;
+    if (typeof concrete === 'undefined') continue;
+    const pos = dep.position(`/env/publish/${key}`);
+    const { value, missing, secrets } = interpolate(String(concrete), ownScope.values, process.env);
+    if (secrets.length > 0) {
+      issues.push({
+        file: pos.file,
+        line: pos.line,
+        message: `\${secret:${secrets[0]}} interpolation is reserved for v1. Configure as plain env until then.`,
+      });
+      continue;
+    }
+    if (missing.length > 0) {
+      issues.push({
+        file: pos.file,
+        line: pos.line,
+        message: `Unresolved interpolation in published ${key}: \${${missing[0]}}`,
+      });
+      continue;
+    }
+    out.push({ key, raw: value, layer: label, file: pos.file, line: pos.line, spec });
+  }
+  return out;
 }
 
 function pushEnvMap(
