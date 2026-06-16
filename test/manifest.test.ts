@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
+import { buildWorkspaceRegistry, discoverManifestFiles } from '../src/manifest/discovery.js';
 import { loadManifestFile } from '../src/manifest/loader.js';
 import { isKnownKind, validateDocument } from '../src/manifest/validator.js';
 import { cleanup, makeTempDir } from './helpers/fixtures.js';
@@ -103,6 +104,68 @@ test('loader: multi-document YAML returns one doc per document', async () => {
     for (const d of docs) {
       assert.equal(validateDocument(d).ok, true, `doc ${d.docIndex} should be valid`);
     }
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test('discoverManifestFiles: finds nested manifests up to MAX_DEPTH (5)', async () => {
+  const dir = await makeTempDir();
+  try {
+    await writeYaml(dir, 'qavor.yaml', 'kind: project\nname: root\n');
+    // depth 5: a/b/c/d/e/qavor.yaml — at the cap, must be found.
+    const atCapDir = path.join(dir, 'a', 'b', 'c', 'd', 'e');
+    await fs.mkdir(atCapDir, { recursive: true });
+    const atCap = await writeYaml(atCapDir, 'qavor.yaml', 'kind: profile\nname: deep\n');
+    // depth 6: one past the cap, intentionally not discovered.
+    const pastCapDir = path.join(atCapDir, 'f');
+    await fs.mkdir(pastCapDir, { recursive: true });
+    const pastCap = await writeYaml(pastCapDir, 'qavor.yaml', 'kind: profile\nname: toodeep\n');
+
+    const found = await discoverManifestFiles(dir);
+    assert.ok(found.includes(atCap), `depth-5 manifest not discovered: ${found.join(', ')}`);
+    assert.ok(!found.includes(pastCap), 'depth-6 manifest should be beyond MAX_DEPTH');
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test('discoverManifestFiles: still prunes SKIP_DIRS like node_modules', async () => {
+  const dir = await makeTempDir();
+  try {
+    const buried = path.join(dir, 'node_modules', 'pkg');
+    await fs.mkdir(buried, { recursive: true });
+    const skipped = await writeYaml(buried, 'qavor.yaml', 'kind: profile\nname: skip\n');
+    const found = await discoverManifestFiles(dir);
+    assert.ok(!found.includes(skipped), 'manifest under node_modules should be skipped');
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test('buildWorkspaceRegistry: a repo reachable under two keys is scanned once', async () => {
+  const dir = await makeTempDir();
+  try {
+    const profDir = path.join(dir, 'profiles', 'node-library');
+    await fs.mkdir(profDir, { recursive: true });
+    await writeYaml(profDir, 'qavor.yaml', 'kind: profile\nname: node_library\n');
+
+    // Same directory under two keys: its repo name and the project sentinel.
+    const registry = await buildWorkspaceRegistry({
+      workspaceRoot: dir,
+      repos: new Map([
+        ['workspace', dir],
+        ['__project__', dir],
+      ]),
+    });
+
+    const profiles = registry.entries.filter((e) => e.kind === 'profile');
+    assert.equal(profiles.length, 1, 'profile should be loaded exactly once');
+    assert.equal(
+      registry.issues.length,
+      0,
+      `unexpected issues: ${JSON.stringify(registry.issues)}`,
+    );
   } finally {
     await cleanup(dir);
   }

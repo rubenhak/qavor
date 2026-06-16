@@ -41,7 +41,7 @@
       "Bash(./test.sh --test-name-pattern='status')",
       "Bash(./test.sh --test-name-pattern='clones the repos' test/git.test.ts)",
       "Bash(find / -name \"*.md\" -path \"*qavor-init*\")",
-      "Read(//Users/rubenhak/.claude/**)",
+      "Read(~/.claude/**)",
       "Bash(pnpm gen:types)",
       "Bash(grep -rn \"kind: repo\\\\|kind:repo\\\\|'repo'\\\\|\\\\\"repo\\\\\"\\\\| repo \\\\`\\\\|\\\\`repo\\\\`\" docs/ README.md AGENTS.md test/)",
       "Bash(cd *)",
@@ -51,7 +51,26 @@
       "Bash(pnpm build *)",
       "Bash(command -v gh)",
       "Bash(gh repo *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(node --import tsx --test test/resolve-env.test.ts)",
+      "Bash(kill %1)",
+      "Bash(pkill -f \"tsx/dist/loader\")",
+      "Bash(rg -n \"require|depends|repositories|profile|ref|name\" src/schema/*.json)",
+      "Bash(rg -n \"group\" src/schema/*.json src/manifest/types/generated.ts)",
+      "Bash(rg -iE \"'env'|'up'|'down'|'doctor'|'prepare'|'run'|'resolve-env'|\\\\\"env\\\\\"|\\\\\"doctor\\\\\"|\\\\\"prepare\\\\\"\")",
+      "Bash(node --import tsx --test test/cross-references.test.ts)",
+      "Bash(node --import tsx /tmp/smoke2.mjs)",
+      "Bash(node --import tsx --test test/manifests.test.ts)",
+      "Bash(node --import tsx src/index.ts --help)",
+      "Bash(git checkout *)",
+      "Bash(rm -rf disctest)",
+      "Bash(mkdir -p disctest/repo/qavor disctest/repo/sub disctest/repo/qavor/nested)",
+      "Bash(cat)",
+      "Bash(echo \"kind: profile\")",
+      "Bash(echo \"kind: service\")",
+      "Bash(node *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(qavor --json manifests)"
     ]
   }
 }

@@ -5,6 +5,7 @@ import { registerDoctor } from './cli/commands/doctor.js';
 import { registerEnv } from './cli/commands/env.js';
 import { registerGitCommands } from './cli/commands/git.js';
 import { registerInit } from './cli/commands/init.js';
+import { registerManifests } from './cli/commands/manifests.js';
 import { registerPrepare } from './cli/commands/prepare.js';
 import { registerResolveEnv } from './cli/commands/resolve-env.js';
 import { registerRunCommands } from './cli/commands/run.js';
@@ -45,6 +46,7 @@ function buildProgram(): Command {
   registerInit(program);
   registerDiscover(program);
   registerWorkspace(program);
+  registerManifests(program);
   registerValidate(program);
   registerGitCommands(program);
   registerPrepare(program);

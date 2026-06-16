@@ -7,7 +7,7 @@ import { type LoadedDocument, loadManifestFile } from './loader.js';
 import type { ManifestKind, Requirement } from './types/index.js';
 import { formatIssue, isKnownKind, type ValidationIssue, validateDocument } from './validator.js';
 
-const MAX_DEPTH = 4;
+const MAX_DEPTH = 5;
 const SKIP_DIRS = new Set([
   '.git',
   '.qavor',
@@ -28,7 +28,8 @@ const SKIP_DIRS = new Set([
  *
  *   - Root `qavor.yaml` (single or multi-document).
  *   - Every `qavor.yaml` under a `qavor/` directory at the repo root.
- *   - Every `<sub-dir>/qavor.yaml` under the repo root, to depth MAX_DEPTH.
+ *   - Every `<sub-dir>/qavor.yaml` under the repo root, at any depth (pruning the
+ *     directories in SKIP_DIRS and bounded only by MAX_DEPTH as a runaway guard).
  *
  * Returns absolute file paths.
  */
@@ -130,8 +131,18 @@ export async function buildWorkspaceRegistry(opts: DiscoveryOptions): Promise<Wo
   const issues: ValidationIssue[] = [];
   const all: RegistryEntry[] = [];
 
+  // Dedupe by resolved directory: a repo may be reachable under more than one
+  // key (e.g. its own name in `repositories:` and the `__project__` sentinel
+  // when it is the project repo). Scanning the same dir twice would load every
+  // manifest twice and raise spurious duplicate-name issues. First key wins.
   const reposList: { name: string; dir: string }[] = [];
-  for (const [name, dir] of opts.repos) reposList.push({ name, dir });
+  const seenDirs = new Set<string>();
+  for (const [name, dir] of opts.repos) {
+    const real = path.resolve(dir);
+    if (seenDirs.has(real)) continue;
+    seenDirs.add(real);
+    reposList.push({ name, dir });
+  }
 
   await pMap(
     reposList,
