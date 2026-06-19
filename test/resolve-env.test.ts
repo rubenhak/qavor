@@ -87,15 +87,16 @@ test('resolve-env: require service deps flow at lowest precedence', async () => 
   }
 });
 
-test('resolve-env: only env.publish flows from a stateful dep', async () => {
+test('resolve-env: only env.publish flows from a backing-service dep', async () => {
   const ws = await makeTempDir('qavor-resolve-');
   try {
     const pg = await makeEntry(
       ws,
       'postgres',
       [
-        'kind: stateful',
+        'kind: service',
         'name: postgres',
+        'mode: docker-compose',
         'env:',
         '  common: { POSTGRES_DB: auth, POSTGRES_PASSWORD: topsecret }',
         '  docker: { POSTGRES_HOST: mypostgres, POSTGRES_PORT: 5432 }',
@@ -112,7 +113,7 @@ test('resolve-env: only env.publish flows from a stateful dep', async () => {
         'kind: service',
         'name: auth',
         'require:',
-        '  - stateful: postgres',
+        '  - service: postgres',
         'env:',
         '  common: { PORT: 8080 }',
         '',
@@ -125,7 +126,7 @@ test('resolve-env: only env.publish flows from a stateful dep', async () => {
       workspaceRoot: ws,
     });
     assert.equal(resolved.issues.length, 0);
-    // Published, interpolated against the stateful's docker env.
+    // Published, interpolated against the backing service's docker env.
     assert.equal(resolved.values.get('POSTGRES_HOST')?.value, 'mypostgres');
     assert.equal(
       resolved.values.get('POSTGRES_URL')?.value,

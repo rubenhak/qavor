@@ -6,14 +6,13 @@ export type QavorManifest =
   | WorkspacesManifest
   | ProjectManifest
   | ServiceManifest
-  | StatefulManifest
   | ProfileManifest;
 /**
  * Manifest schema version. Defaults to 1 if omitted.
  */
 export type SchemaVersion = 1;
 /**
- * Lowercase identifier. Letters, digits, dot, dash, underscore. 1-63 chars. Used as service/stateful/profile/repo/group identifiers.
+ * Lowercase identifier. Letters, digits, dot, dash, underscore. 1-63 chars. Used as service/profile/repo/group identifiers.
  */
 export type Name = string;
 export type ProjectRepoEntry = {
@@ -47,14 +46,13 @@ export type ProjectRepoEntry = {
  */
 export type EnvScalar = string | number | boolean;
 /**
- * A single dependency edge. Exactly one of `service`, `stateful`, or `group` must be set.
+ * A single dependency edge. Exactly one of `service` or `group` must be set. Backing services (postgres, kafka, …) are referenced the same way as any other service.
  */
 export type Requirement = {
   /**
    * Service reference. `<service>` for same-workspace, `<repo>:<service>` permitted.
    */
   service?: string;
-  stateful?: Name;
   group?: Name;
   optional?: boolean;
   /**
@@ -133,7 +131,7 @@ export interface ProjectManifest {
   repositories: [Name | ProjectRepoEntry, ...(Name | ProjectRepoEntry)[]];
 }
 /**
- * Runnable application: how to build and execute an app. Lives at the root of a single-service repo as `qavor.yaml`, or under a sub-directory of a multi-service repo (e.g. `service-foo/qavor.yaml`). A service manifest never defines the workspace repo set — the list of repositories comes solely from the `kind: project` manifest's `repositories:` list.
+ * Runnable application: how to build and execute an app. This single kind covers both first-party apps (built and run natively or in a container) and externally provided backing dependencies such as postgres/kafka/redis (typically run via `docker-compose` per ADR-005, exposing a `env.publish` contract to dependents). Lives at the root of a single-service repo as `qavor.yaml`, or under a sub-directory of a multi-service repo (e.g. `service-foo/qavor.yaml`). A service manifest never defines the workspace repo set — the list of repositories comes solely from the `kind: project` manifest's `repositories:` list.
  */
 export interface ServiceManifest {
   kind: 'service';
@@ -150,9 +148,9 @@ export interface ServiceManifest {
   profiles?: Name[];
   runtime?: RuntimeBlock;
   /**
-   * Default run mode for this service. Overridable per invocation via `--mode`. Must match a backend whose `enabled: true` is set on this service or one of its profiles.
+   * Default run mode for this service. Overridable per invocation via `--mode`. Must match a backend whose `enabled: true` is set on this service or one of its profiles. Backing services typically use `docker-compose`.
    */
-  mode?: 'native' | 'docker';
+  mode?: 'native' | 'docker' | 'docker-compose';
   /**
    * Dependencies that must be running before this service starts.
    */
@@ -161,7 +159,7 @@ export interface ServiceManifest {
   hooks?: Hooks;
 }
 /**
- * Available runtime backends. A service or stateful manifest may declare any subset; the active backend is chosen by the resolved `mode`.
+ * Available runtime backends. A service manifest may declare any subset; the active backend is chosen by the resolved `mode`.
  */
 export interface RuntimeBlock {
   native?: RuntimeBackend;
@@ -219,12 +217,13 @@ export interface EnvSpec {
   description?: string;
 }
 /**
- * Layered env block. `common` always applies; `native` or `docker` is layered on top depending on the active run mode. See the proposal section on Manifest Resolution Order for the full precedence chain.
+ * Layered env block. `common` always applies; `native` or `docker` is layered on top depending on the active run mode. `publish` (optional) is the explicit contract a backing service exposes to its dependents at start time — when present, dependents receive only the published keys instead of the service's full composed env. See the proposal section on Manifest Resolution Order for the full precedence chain.
  */
 export interface EnvBlock {
   common?: EnvMap;
   native?: EnvMap;
   docker?: EnvMap;
+  publish?: EnvMap;
 }
 /**
  * Lifecycle hooks. Each hook list runs in the manifest's directory at the corresponding lifecycle event.
@@ -240,38 +239,7 @@ export interface Hooks {
   post_stop?: HookCommands;
 }
 /**
- * Externally provided stateful service (postgres, kafka, redis, ...). Lives at the root of a stateful-dep repo as `qavor.yaml`, or under a sub-directory of a deps repo (e.g. `postgresql/qavor.yaml`). At v0 stateful services run via `docker-compose` and qavor owns the generated compose project (per ADR-005).
- */
-export interface StatefulManifest {
-  kind: 'stateful';
-  schemaVersion?: SchemaVersion;
-  name: Name;
-  description?: string;
-  /**
-   * Additional group memberships for this stateful service.
-   */
-  groups?: Name[];
-  profiles?: Name[];
-  runtime?: RuntimeBlock;
-  /**
-   * Default run mode. v0 stateful services should use `docker-compose`.
-   */
-  mode?: 'docker-compose' | 'native' | 'docker';
-  require?: Requirement[];
-  env?: StatefulEnvBlock;
-  hooks?: Hooks;
-}
-/**
- * Env block for a stateful service. Adds `publish`: env vars exposed to dependents at start time.
- */
-export interface StatefulEnvBlock {
-  common?: EnvMap;
-  native?: EnvMap;
-  docker?: EnvMap;
-  publish?: EnvMap;
-}
-/**
- * Reusable runtime + env bundle. Referenced by services and stateful manifests via the `profiles:` list. Profiles can themselves reference other profiles; resolution flattens the chain in declaration order with later entries winning. A profile's runtime/env layer below the referencing manifest's own runtime/env.
+ * Reusable runtime + env bundle. Referenced by service manifests via the `profiles:` list. Profiles can themselves reference other profiles; resolution flattens the chain in declaration order with later entries winning. A profile's runtime/env layer below the referencing manifest's own runtime/env.
  */
 export interface ProfileManifest {
   kind: 'profile';

@@ -29,13 +29,13 @@ A typical workspace on disk looks like this:
 │   │   └── qavor.yaml             # service manifest            (kind: service)
 │   └── service-bar/
 │       └── qavor.yaml             # service manifest            (kind: service)
-├── stateful-dependencies.git/     # repo grouping backing deps
+├── backing-dependencies.git/      # repo grouping backing services
 │   ├── postgresql/
-│   │   └── qavor.yaml             # stateful manifest           (kind: stateful)
+│   │   └── qavor.yaml             # backing service            (kind: service)
 │   ├── kafka/
-│   │   └── qavor.yaml             # stateful manifest           (kind: stateful)
+│   │   └── qavor.yaml             # backing service            (kind: service)
 │   └── rabbitmq/
-│       └── qavor.yaml             # stateful manifest           (kind: stateful)
+│       └── qavor.yaml             # backing service            (kind: service)
 └── another-repo.git/              # plain repo; qavor.yaml is optional
 ```
 
@@ -92,11 +92,14 @@ repositories:
 
 ## Service Manifest
 
-A runnable application: it describes how to build and execute an app. A service is
-something the workspace runs, distinct from a stateful backing dependency it depends
-on. A service manifest never defines which repos belong to the workspace — that list
-lives only in the `kind: project` manifest's `repositories:`. A repo may contain zero,
-one, or many service manifests.
+A runnable application: it describes how to build and execute an app. The `kind: service`
+manifest covers **both** first-party apps (built and run natively or in a container) and
+externally provided backing dependencies such as postgres, kafka, or redis. A backing
+service typically runs via `docker-compose` (qavor generates and owns the compose project,
+per ADR-005) and exposes an explicit `env.publish` contract to its dependents; see
+[Backing services](#backing-service-example) below. A service manifest never defines which
+repos belong to the workspace — that list lives only in the `kind: project` manifest's
+`repositories:`. A repo may contain zero, one, or many service manifests.
 
 ```yaml
 # indicates that the manifest describes an executable application
@@ -148,7 +151,7 @@ mode: native
 
 # what this service needs in order to start
 require:
-  - stateful: postgres            # named stateful dep in this workspace
+  - service: postgres             # named backing service in this workspace
   - service: token-issuer         # cross-repo service reference (by service name)
 
 env:
@@ -169,23 +172,28 @@ env:
 ```
 
 
-## Stateful Service Manifest
+<a id="backing-service-example"></a>
+### Backing service (postgres, kafka, redis, …)
 
-An externally provided backing dep (postgres, kafka, redis, …). Always
-delegated to docker compose at v0; qavor generates and owns the compose
-project (per ADR-005).
+An externally provided backing dependency is just a `kind: service` with two
+extra traits: it usually runs via `docker-compose` (qavor generates and owns the
+compose project, per ADR-005), and it declares an `env.publish` block — the
+explicit contract exposed to dependents. When a service declares `env.publish`,
+its dependents receive **only** the published keys (interpolated at start time),
+never its full env.
 
 ```yaml
-# indicates that the manifest describes a stateful service
-kind: stateful
+# a backing service is just a service that publishes a contract
+kind: service
 
-# unique stateful name within the workspace
+# unique service name within the workspace
 name: postgres
 
 # optional additional group membership
 groups: [database]
 
-# which runtimes are available; stateful deps run via docker-compose at v0
+# which runtimes are available; backing services typically use docker-compose
+mode: docker-compose
 runtime:
   native:
     enabled: false
@@ -239,7 +247,7 @@ When the same env key is set in multiple places, later layers win:
     1.2 native or container envs  (depending on mode)
     1.3 `.env` next to the `qavor.yaml`
     1.4 `.env.native` or `.env.container` (depending on mode), next to the `qavor.yaml`
-2. Service or Stateful service:
+2. The service itself:
     2.1 commmon envs from `qavor.yaml`
     2.2 native or container envs  (depending on mode)
     2.3 `.env` next to the `qavor.yaml`
@@ -253,10 +261,10 @@ The mode-specific dotenv file is `.env.native` in native mode and `.env.docker`
 `qavor env <service>` prints the fully-resolved value with provenance for each
 key, so this chain is always inspectable.
 
-`qavor resolve-env --only <service-or-stateful>` resolves the same chain
-**including `require:` dependencies** (service deps contribute their full env;
-stateful deps contribute only their `env.publish` contract) and can emit a
-shell-sourceable form:
+`qavor resolve-env --only <service>` resolves the same chain
+**including `require:` dependencies** (ordinary deps contribute their full env;
+backing services that declare `env.publish` contribute only that contract) and
+can emit a shell-sourceable form:
 
 ```bash
 # inspect (human-readable, secrets redacted)
@@ -274,7 +282,7 @@ qavor resolve-env --only auth --json
 
 
 ## Profile Manifest
-Profiles allow configuration reusability and can be referenced from services and stateful dependencies.
+Profiles allow configuration reusability and can be referenced from service manifests.
 Multiple profiles can bee referenced. The order is from top to bottom. Profiles should be able to reference
 other profiles as well.
 
@@ -322,7 +330,7 @@ runtime:
 # default run mode for services in this profile (overridable per service via --mode)
 mode: native
 
-# env layered on top of every selected service / stateful dep
+# env layered on top of every selected service
 env:
   # common applies to every selected unit, regardless of run mode
   common:
@@ -345,7 +353,7 @@ profiles:
 
 # what this service needs in order to start
 require:
-  - stateful: postgres            # named stateful dep in this workspace
+  - service: postgres             # named backing service in this workspace
   - service: token-issuer         # cross-repo service reference (by service name)
 
 env:

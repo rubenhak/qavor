@@ -8,7 +8,7 @@
     "name": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$",
-      "description": "Lowercase identifier. Letters, digits, dot, dash, underscore. 1-63 chars. Used as service/stateful/profile/repo/group identifiers."
+      "description": "Lowercase identifier. Letters, digits, dot, dash, underscore. 1-63 chars. Used as service/profile/repo/group identifiers."
     },
     "envKey": {
       "type": "string",
@@ -47,17 +47,7 @@
       "additionalProperties": false
     },
     "envBlock": {
-      "description": "Layered env block. `common` always applies; `native` or `docker` is layered on top depending on the active run mode. See the proposal section on Manifest Resolution Order for the full precedence chain.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "common": { "$ref": "#/$defs/envMap" },
-        "native": { "$ref": "#/$defs/envMap" },
-        "docker": { "$ref": "#/$defs/envMap" }
-      }
-    },
-    "statefulEnvBlock": {
-      "description": "Env block for a stateful service. Adds `publish`: env vars exposed to dependents at start time.",
+      "description": "Layered env block. `common` always applies; `native` or `docker` is layered on top depending on the active run mode. `publish` (optional) is the explicit contract a backing service exposes to its dependents at start time — when present, dependents receive only the published keys instead of the service's full composed env. See the proposal section on Manifest Resolution Order for the full precedence chain.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -101,7 +91,7 @@
       }
     },
     "runtimeBlock": {
-      "description": "Available runtime backends. A service or stateful manifest may declare any subset; the active backend is chosen by the resolved `mode`.",
+      "description": "Available runtime backends. A service manifest may declare any subset; the active backend is chosen by the resolved `mode`.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -111,7 +101,7 @@
       }
     },
     "mode": {
-      "description": "Run mode. `docker-compose` is only valid for stateful manifests at v0.",
+      "description": "Run mode. `docker-compose` is intended for backing services managed via a generated compose project (ADR-005).",
       "type": "string",
       "enum": ["native", "docker", "docker-compose"]
     },
@@ -120,7 +110,7 @@
       "$ref": "#/$defs/name"
     },
     "requirement": {
-      "description": "A single dependency edge. Exactly one of `service`, `stateful`, or `group` must be set.",
+      "description": "A single dependency edge. Exactly one of `service` or `group` must be set. Backing services (postgres, kafka, …) are referenced the same way as any other service.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -128,7 +118,6 @@
           "type": "string",
           "description": "Service reference. `<service>` for same-workspace, `<repo>:<service>` permitted."
         },
-        "stateful": { "$ref": "#/$defs/name" },
         "group": { "$ref": "#/$defs/name" },
         "optional": { "type": "boolean", "default": false },
         "condition": {
@@ -142,11 +131,7 @@
           "description": "Whether to wait for process-up or for the readiness probe to pass before starting dependents."
         }
       },
-      "oneOf": [
-        { "required": ["service"] },
-        { "required": ["stateful"] },
-        { "required": ["group"] }
-      ]
+      "oneOf": [{ "required": ["service"] }, { "required": ["group"] }]
     },
     "hookCommands": {
       "description": "One or more shell commands or paths to executable scripts, run in the manifest's directory.",

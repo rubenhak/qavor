@@ -27,7 +27,6 @@ const KIND_STYLES: Record<ManifestKind, KindStyle> = {
   workspaces: { emoji: '🗂 ', color: (p) => p.cyan },
   project: { emoji: '🧭', color: (p) => p.magenta },
   service: { emoji: '🚀', color: (p) => p.green },
-  stateful: { emoji: '🗄 ', color: (p) => p.yellow },
   profile: { emoji: '🎚 ', color: (p) => p.blue },
 };
 
@@ -189,10 +188,11 @@ function manifestInfo(entry: RegistryEntry): ManifestInfo {
       if (reqs > 0) details.push(`${reqs} dep${reqs === 1 ? '' : 's'}`);
       const profiles = Array.isArray(data.profiles) ? data.profiles.length : 0;
       if (profiles > 0) details.push(`${profiles} profile${profiles === 1 ? '' : 's'}`);
-      break;
-    }
-    case 'stateful': {
-      details.push(typeof data.mode === 'string' ? data.mode : 'docker-compose');
+      const publishes = (data as { env?: { publish?: Record<string, unknown> } }).env?.publish;
+      if (publishes && typeof publishes === 'object') {
+        const n = Object.keys(publishes).length;
+        if (n > 0) details.push(`publishes ${n}`);
+      }
       break;
     }
     case 'profile': {

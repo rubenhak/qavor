@@ -20,9 +20,9 @@ export function registerResolveEnv(program: Command): void {
   program
     .command('resolve-env')
     .description(
-      'Resolve the full environment for a service or stateful (including require: deps), ready to print or source.',
+      'Resolve the full environment for a service (including require: deps), ready to print or source.',
     )
-    .option('--only <name>', 'Name of the service or stateful whose env to resolve.')
+    .option('--only <name>', 'Name of the service whose env to resolve.')
     .option('--mode <mode>', 'native | docker (default: native).', 'native')
     .option(
       '--format <format>',
@@ -49,8 +49,7 @@ export function registerResolveEnv(program: Command): void {
         cmd: Command,
       ) => {
         const root = inheritRootOptions(cmd);
-        if (!opts.only)
-          throw new UserError('resolve-env requires --only <service-or-stateful-name>.');
+        if (!opts.only) throw new UserError('resolve-env requires --only <service-name>.');
         if (opts.mode !== 'native' && opts.mode !== 'docker') {
           throw new UserError(`--mode must be 'native' or 'docker'.`);
         }
@@ -84,9 +83,9 @@ export function registerResolveEnv(program: Command): void {
         if (!target) {
           throw new UserError(`'${opts.only}' was not found in the workspace.`);
         }
-        if (target.kind !== 'service' && target.kind !== 'stateful') {
+        if (target.kind !== 'service') {
           throw new UserError(
-            `'${opts.only}' is a ${target.kind} manifest, which has no resolvable environment. Use a service or stateful name.`,
+            `'${opts.only}' is a ${target.kind} manifest, which has no resolvable environment. Use a service name.`,
           );
         }
 

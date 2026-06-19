@@ -25,7 +25,6 @@ const KINDS = [
   { id: 'Workspaces', file: 'qavor.workspaces.schema.json' },
   { id: 'Project', file: 'qavor.project.schema.json' },
   { id: 'Service', file: 'qavor.service.schema.json' },
-  { id: 'Stateful', file: 'qavor.stateful.schema.json' },
   { id: 'Profile', file: 'qavor.profile.schema.json' },
 ] as const;
 

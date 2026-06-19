@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qavor.dev/schemas/qavor.profile.schema.json",
   "title": "qavor profile manifest",
-  "description": "Reusable runtime + env bundle. Referenced by services and stateful manifests via the `profiles:` list. Profiles can themselves reference other profiles; resolution flattens the chain in declaration order with later entries winning. A profile's runtime/env layer below the referencing manifest's own runtime/env.",
+  "description": "Reusable runtime + env bundle. Referenced by service manifests via the `profiles:` list. Profiles can themselves reference other profiles; resolution flattens the chain in declaration order with later entries winning. A profile's runtime/env layer below the referencing manifest's own runtime/env.",
   "type": "object",
   "additionalProperties": false,
   "required": ["kind", "name"],

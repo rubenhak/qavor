@@ -7,7 +7,6 @@ import type {
   EnvSpec,
   Requirement,
   ServiceManifest,
-  StatefulEnvBlock,
 } from '../manifest/types/index.js';
 import { ManifestError, UserError } from '../util/exit-codes.js';
 import { loadDotenvFile } from './dotenv.js';
@@ -63,7 +62,7 @@ export interface ServiceCompositionInput {
 export interface UnitCompositionInput {
   /** Active run mode for the target unit. */
   mode: RunMode;
-  /** Registry entry of the service/stateful whose env to resolve. */
+  /** Registry entry of the service whose env to resolve. */
   target: RegistryEntry;
   /** Workspace registry, used to resolve `require:` dependencies by name. */
   registry: WorkspaceRegistry;
@@ -102,12 +101,13 @@ export async function composeServiceEnv(input: ServiceCompositionInput): Promise
 }
 
 /**
- * Compose env for any unit (service or stateful) by name, resolving the full
- * documented precedence chain including `require:` dependencies. Mirrors
+ * Compose env for any service by name, resolving the full documented
+ * precedence chain including `require:` dependencies. Mirrors
  * {@link composeServiceEnv} but additionally walks the dependency graph:
  *
- *   1. Required deps (recursive, lowest precedence). Service deps contribute
- *      their full composed env; stateful deps contribute only `env.publish`.
+ *   1. Required deps (recursive, lowest precedence). A dep contributes its full
+ *      composed env, unless it declares `env.publish` — a backing service — in
+ *      which case only the published contract flows to dependents.
  *   2. The unit's own env (common → mode → .env → .env.<mode>/.env.container).
  *   3. Workspace `.env`.
  *   4. CLI `--env KEY=VAL`.
@@ -131,16 +131,9 @@ export async function composeUnitEnv(input: UnitCompositionInput): Promise<Resol
       layerPrefix: input.target.kind,
     })),
   );
-  // A stateful target surfaces its own published contract on top of its env.
-  if (input.target.kind === 'stateful') {
-    layers.push(
-      ...(await resolveStatefulPublishLayers(
-        input.target,
-        input.mode,
-        issues,
-        `${input.target.kind}.publish`,
-      )),
-    );
+  // A backing service surfaces its own published contract on top of its env.
+  if (entryEnvBlock(input.target)?.publish) {
+    layers.push(...(await resolvePublishLayers(input.target, input.mode, issues, 'env.publish')));
   }
 
   // 3 + 4. Workspace .env then CLI overrides.
@@ -159,9 +152,9 @@ interface LayerEntry {
   spec: EnvSpec | null;
 }
 
-/** Env block accessor that tolerates both EnvBlock and StatefulEnvBlock. */
-function entryEnvBlock(entry: RegistryEntry): EnvBlock | StatefulEnvBlock | undefined {
-  return (entry.data as { env?: EnvBlock | StatefulEnvBlock }).env;
+/** Env block accessor for a registry entry. */
+function entryEnvBlock(entry: RegistryEntry): EnvBlock | undefined {
+  return (entry.data as { env?: EnvBlock }).env;
 }
 
 /**
@@ -171,7 +164,7 @@ function entryEnvBlock(entry: RegistryEntry): EnvBlock | StatefulEnvBlock | unde
  * latter, when present, layers last and wins).
  */
 async function collectOwnEnvLayers(args: {
-  env: EnvBlock | StatefulEnvBlock | undefined;
+  env: EnvBlock | undefined;
   mode: RunMode;
   manifestDir: string;
   file: string;
@@ -249,9 +242,9 @@ function appendCliLayers(layers: LayerEntry[], cliEnv: Record<string, string> | 
 /**
  * Recursively append env layers from a unit's `require:` dependencies. Deeper
  * (transitive) deps are pushed first so they carry the lowest precedence.
- * Service deps contribute their full composed env; stateful deps contribute
- * only their resolved `env.publish` contract. Group requirements are not
- * resolved for env composition at v0.
+ * A dep contributes its full composed env, unless it declares `env.publish`
+ * (a backing service), in which case only its resolved publish contract flows.
+ * Group requirements are not resolved for env composition at v0.
  */
 async function appendRequireLayers(
   entry: RegistryEntry,
@@ -268,7 +261,7 @@ async function appendRequireLayers(
   if (!Array.isArray(requires)) return;
 
   for (const req of requires) {
-    const ref = req.service ?? req.stateful;
+    const ref = req.service;
     if (typeof ref !== 'string' || ref.length === 0) continue; // group requires: deferred
     // Cross-repo refs may be `<repo>:<service>`; resolve by the bare name.
     const depName = ref.includes(':') ? ref.slice(ref.lastIndexOf(':') + 1) : ref;
@@ -286,18 +279,14 @@ async function appendRequireLayers(
     }
     // Transitive deps first (lower precedence).
     await appendRequireLayers(dep, ctx, visited, layers, issues);
-    if (dep.kind === 'stateful') {
-      // Stateful deps run in containers at v0 (ADR-005); use their docker env
-      // unless they explicitly pin native mode.
+    if (entryEnvBlock(dep)?.publish) {
+      // Backing services publish an explicit contract; only published keys
+      // flow to dependents. They run in containers at v0 (ADR-005), so use
+      // their docker env unless they explicitly pin native mode.
       const depMode: RunMode =
         (dep.data as { mode?: string }).mode === 'native' ? 'native' : 'docker';
       layers.push(
-        ...(await resolveStatefulPublishLayers(
-          dep,
-          depMode,
-          issues,
-          `require:${dep.name}.publish`,
-        )),
+        ...(await resolvePublishLayers(dep, depMode, issues, `require:${dep.name}.publish`)),
       );
     } else {
       layers.push(
@@ -315,19 +304,19 @@ async function appendRequireLayers(
 }
 
 /**
- * Resolve a stateful's `env.publish` map. Publish values reference the
- * stateful's own env (e.g. `${POSTGRES_HOST}`), so we first resolve the
- * stateful's private env in its own scope, then interpolate publish against
+ * Resolve a backing service's `env.publish` map. Publish values reference the
+ * service's own env (e.g. `${POSTGRES_HOST}`), so we first resolve the
+ * service's private env in its own scope, then interpolate publish against
  * it — only the published keys (with their final values) are returned, so the
- * stateful's private keys never leak to dependents.
+ * service's private keys never leak to dependents.
  */
-async function resolveStatefulPublishLayers(
+async function resolvePublishLayers(
   dep: RegistryEntry,
   mode: RunMode,
   issues: ManifestComposeIssue[],
   label: string,
 ): Promise<LayerEntry[]> {
-  const env = entryEnvBlock(dep) as StatefulEnvBlock | undefined;
+  const env = entryEnvBlock(dep);
   const publish = env?.publish;
   if (!publish) return [];
 
@@ -337,7 +326,7 @@ async function resolveStatefulPublishLayers(
     manifestDir: dep.dir,
     file: dep.file,
     position: dep.position,
-    layerPrefix: `stateful:${dep.name}`,
+    layerPrefix: `service:${dep.name}`,
   });
   const ownScope = interpolateLayers(ownLayers, []);
 
