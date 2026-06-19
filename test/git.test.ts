@@ -97,7 +97,7 @@ test('qavor status: reports repos listed in the manifest but not cloned as missi
   try {
     await runCli(['init', fixtures.projectRepo, '--into', ws]);
     // Clone only web; auth stays missing.
-    await runCli(['git', 'clone', '--repo', 'web'], { cwd: ws });
+    await runCli(['git', 'clone', '--only', 'web'], { cwd: ws });
     const status = await runCli(['git', 'status', '--json'], { cwd: ws });
     assert.equal(status.exitCode, 0, `status failed: ${status.stderr}`);
     const parsed = JSON.parse(status.stdout);
@@ -118,7 +118,7 @@ test('qavor status: human output marks missing repos and tallies them in the sum
   const ws = await makeTempDir('qavor-status-missing-human-');
   try {
     await runCli(['init', fixtures.projectRepo, '--into', ws]);
-    await runCli(['git', 'clone', '--repo', 'web'], { cwd: ws });
+    await runCli(['git', 'clone', '--only', 'web'], { cwd: ws });
     const status = await runCli(['git', 'status'], {
       cwd: ws,
       env: { NO_COLOR: '1', FORCE_COLOR: '0' },
@@ -138,7 +138,7 @@ test('qavor git sync: clones repos that are missing from the workspace', async (
   try {
     await runCli(['init', fixtures.projectRepo, '--into', ws]);
     // Clone only web; sync should clone the missing auth repo.
-    await runCli(['git', 'clone', '--repo', 'web'], { cwd: ws });
+    await runCli(['git', 'clone', '--only', 'web'], { cwd: ws });
     let authExists = true;
     try {
       await fs.stat(path.join(ws, 'auth.git'));
@@ -245,12 +245,12 @@ test('qavor git commit: errors when message omitted with no TTY', async () => {
   }
 });
 
-test('qavor clone: --repo selector clones only the requested repo', async () => {
+test('qavor clone: --only selector clones only the requested repo', async () => {
   const fixtures = await buildFixtureRepos({ services: ['web', 'auth'] });
   const ws = await makeTempDir('qavor-clone-sel-');
   try {
     await runCli(['init', fixtures.projectRepo, '--into', ws]);
-    const r = await runCli(['git', 'clone', '--repo', 'web'], { cwd: ws });
+    const r = await runCli(['git', 'clone', '--only', 'web'], { cwd: ws });
     assert.equal(r.exitCode, 0, `selective clone failed: ${r.stderr}`);
     await fs.stat(path.join(ws, 'web.git'));
     let authExists = true;
