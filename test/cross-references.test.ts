@@ -42,8 +42,8 @@ test('cross-ref: resolvable require deps produce no issues', async () => {
   const reg = await buildRegistry({
     auth: ['kind: service', 'name: auth', 'require:', '  - service: token-issuer', ''].join('\n'),
     issuer: ['kind: service', 'name: token-issuer', ''].join('\n'),
-    pg: ['kind: stateful', 'name: postgres', ''].join('\n'),
-    db: ['kind: service', 'name: db', 'require:', '  - stateful: postgres', ''].join('\n'),
+    pg: ['kind: service', 'name: postgres', 'mode: docker-compose', ''].join('\n'),
+    db: ['kind: service', 'name: db', 'require:', '  - service: postgres', ''].join('\n'),
   });
   assert.equal(reg.issues.length, 0, `expected no issues, got ${JSON.stringify(reg.issues)}`);
 });
@@ -63,17 +63,6 @@ test('cross-ref: optional missing dependency is allowed', async () => {
     reg.issues.length,
     0,
     `optional deps must not error, got ${JSON.stringify(reg.issues)}`,
-  );
-});
-
-test('cross-ref: wrong-kind reference is flagged with a hint', async () => {
-  const reg = await buildRegistry({
-    pg: ['kind: stateful', 'name: postgres', ''].join('\n'),
-    auth: ['kind: service', 'name: auth', 'require:', '  - service: postgres', ''].join('\n'),
-  });
-  assert.ok(
-    reg.issues.some((i) => i.message.includes('declared as a stateful')),
-    `expected a wrong-kind hint, got ${JSON.stringify(reg.issues)}`,
   );
 });
 

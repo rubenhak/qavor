@@ -198,7 +198,7 @@ export async function buildWorkspaceRegistry(opts: DiscoveryOptions): Promise<Wo
     { concurrency: opts.concurrency ?? 8 },
   );
 
-  // Validate workspace-wide uniqueness of names within (service/stateful/profile/repo).
+  // Validate workspace-wide uniqueness of names within (service/profile/repo).
   const byName = new Map<string, RegistryEntry>();
   for (const entry of all) {
     if (!entry.name) continue;
@@ -246,22 +246,20 @@ function refIssue(entry: RegistryEntry, pointer: string, message: string): Valid
 
 /**
  * Validate cross-manifest references after all documents are loaded and
- * schema-valid: `require:` deps (service/stateful/group) and `profiles:` must
- * each point at a manifest declared somewhere in the workspace. Optional
- * requirements are allowed to dangle. Group references resolve against the
- * union of every declared group (project `groups`, repo-inline groups, and
- * service/stateful `groups` memberships).
+ * schema-valid: `require:` deps (service/group) and `profiles:` must each point
+ * at a manifest declared somewhere in the workspace. Optional requirements are
+ * allowed to dangle. Group references resolve against the union of every
+ * declared group (project `groups`, repo-inline groups, and service `groups`
+ * memberships).
  */
 function checkCrossReferences(entries: RegistryEntry[], issues: ValidationIssue[]): void {
   const serviceNames = new Set<string>();
-  const statefulNames = new Set<string>();
   const profileNames = new Set<string>();
   const groupNames = new Set<string>();
 
   for (const e of entries) {
     if (!e.name) continue;
     if (e.kind === 'service') serviceNames.add(e.name);
-    else if (e.kind === 'stateful') statefulNames.add(e.name);
     else if (e.kind === 'profile') profileNames.add(e.name);
   }
 
@@ -289,7 +287,7 @@ function checkCrossReferences(entries: RegistryEntry[], issues: ValidationIssue[
   }
 
   for (const e of entries) {
-    if (e.kind !== 'service' && e.kind !== 'stateful') continue;
+    if (e.kind !== 'service') continue;
     const label = e.name || e.kind;
 
     const requires = (e.data as { require?: Requirement[] }).require;
@@ -304,22 +302,7 @@ function checkCrossReferences(entries: RegistryEntry[], issues: ValidationIssue[
               refIssue(
                 e,
                 ptr,
-                statefulNames.has(bare)
-                  ? `'${label}' requires service '${req.service}', but '${bare}' is declared as a stateful.`
-                  : `'${label}' requires service '${req.service}', which is not defined in the workspace.`,
-              ),
-            );
-          }
-        } else if (typeof req.stateful === 'string' && req.stateful.length > 0) {
-          const bare = bareRef(req.stateful);
-          if (!statefulNames.has(bare)) {
-            issues.push(
-              refIssue(
-                e,
-                ptr,
-                serviceNames.has(bare)
-                  ? `'${label}' requires stateful '${req.stateful}', but '${bare}' is declared as a service.`
-                  : `'${label}' requires stateful '${req.stateful}', which is not defined in the workspace.`,
+                `'${label}' requires service '${req.service}', which is not defined in the workspace.`,
               ),
             );
           }

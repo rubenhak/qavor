@@ -46,18 +46,18 @@ Format: ADR-NNN, status, context, decision, consequences. Each can be revisited;
 
 ---
 
-## ADR-002 — Process supervision: **own minimal supervisor for native, compose for docker / stateful**
+## ADR-002 — Process supervision: **own minimal supervisor for native, compose for docker / docker-compose**
 
 **Status:** Accepted (v0).
 
 **Context.** qavor must start and stop a heterogeneous set of services in topological order, gate dependents on readiness probes, multiplex logs, and shut down cleanly. Two extremes exist: build a full supervisor, or push everything through `docker compose`.
 
 **Options considered.**
-- **Own minimal native supervisor + compose for docker mode + compose for stateful** — Each native service runs as a child process tracked in `.qavor/state/`. We own the dependency graph, readiness gating, log multiplexing, signal handling, and PID lifecycle in TypeScript (using `node:child_process` + `execa`, async readiness probes, and a `p-queue`-bounded start loop). Container-mode services (`mode: docker`) and stateful deps (`kind: stateful`) are delegated to a generated compose project for batteries-included networking, restart policies, and volume management.
+- **Own minimal native supervisor + compose for docker mode + compose for backing services** — Each native service runs as a child process tracked in `.qavor/state/`. We own the dependency graph, readiness gating, log multiplexing, signal handling, and PID lifecycle in TypeScript (using `node:child_process` + `execa`, async readiness probes, and a `p-queue`-bounded start loop). Container-mode services (`mode: docker`) and backing services (`mode: docker-compose`) are delegated to a generated compose project for batteries-included networking, restart policies, and volume management.
 - **Delegate native too (overmind/honcho/foreman)** — Reuses an existing supervisor but forces dual code paths for readiness gating, log prefixing, and dep-graph awareness, since none of those tools natively understand qavor's graph.
 - **Run everything through compose (incl. native)** — Forces every dev workflow through containers, which conflicts with the explicit "native vs docker per service, switchable per invocation" requirement (5.4) and the goal of low-latency hot-reload loops.
 
-**Decision.** Own minimal supervisor for `mode: native`; compose for `mode: docker` and for all `kind: stateful` documents. The supervisor is intentionally small: process spawn, env injection, stdout/stderr capture, signal handling, readiness probe loop, and PID/state file in `.qavor/state/`.
+**Decision.** Own minimal supervisor for `mode: native`; compose for `mode: docker` and `mode: docker-compose` (the latter typical for backing services). The supervisor is intentionally small: process spawn, env injection, stdout/stderr capture, signal handling, readiness probe loop, and PID/state file in `.qavor/state/`.
 
 **Consequences.**
 - Two execution backends share one orchestration plane (the dep graph, env composer, readiness gate).
@@ -127,7 +127,7 @@ After resolving the source, qavor:
 
 **Status:** Accepted (v0).
 
-**Context.** Container services (`mode: docker`) and every `kind: stateful` need a compose project. Either qavor owns it end-to-end (generated from manifests) or qavor consumes a user-authored compose file.
+**Context.** Container services (`mode: docker`) and backing services (`mode: docker-compose`) need a compose project. Either qavor owns it end-to-end (generated from manifests) or qavor consumes a user-authored compose file.
 
 **Options considered.**
 - **Generate-and-own** — qavor renders a compose file into `.qavor/compose/docker-compose.yaml` from the declarative model. Pure source-of-truth in qavor manifests; users never edit the generated file.
@@ -138,8 +138,8 @@ After resolving the source, qavor:
 
 **Consequences.**
 - Generated file is treated as a build artifact: written under `.qavor/compose/`, regenerated on every relevant op, and listed in `.gitignore`.
-- The compose project is composed from every `kind: stateful` document plus every `kind: service` whose active mode is `docker`. The runtime block on each manifest provides the build/run command(s) qavor uses to populate the compose service.
-- Overlays (when introduced) are explicit, versioned, and limited (qavor warns when an overlay clobbers an env var that qavor would have published from a stateful's `publish:` map — provenance is preserved in `qavor explain`).
+- The compose project is composed from every `kind: service` whose active mode is `docker` or `docker-compose` (the latter typical for backing services). The runtime block on each manifest provides the build/run command(s) qavor uses to populate the compose service.
+- Overlays (when introduced) are explicit, versioned, and limited (qavor warns when an overlay clobbers an env var that qavor would have published from a service's `env.publish:` map — provenance is preserved in `qavor explain`).
 - Compose project name is namespaced per workspace (the project manifest's `name`) to avoid collisions when multiple workspaces coexist.
 
 ---
@@ -176,7 +176,7 @@ After resolving the source, qavor:
 | ADR | Topic | Decision |
 |---|---|---|
 | 001 | Implementation language | **Node.js (TypeScript)**, Node 26+, distributed as SEA |
-| 002 | Process supervision | Own minimal native supervisor + compose for docker / stateful |
+| 002 | Process supervision | Own minimal native supervisor + compose for docker / docker-compose |
 | 003 | Container runtime | **Docker only at v0**; pluggable later |
 | 004 | Bootstrap | **`qavor init <project-repo-source>`** — project repo is the seed; `kind: workspaces` pointer is generated |
 | 005 | Compose file | Generated-and-owned, with overlay overrides |

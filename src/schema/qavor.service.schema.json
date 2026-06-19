@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qavor.dev/schemas/qavor.service.schema.json",
   "title": "qavor service manifest",
-  "description": "Runnable application: how to build and execute an app. Lives at the root of a single-service repo as `qavor.yaml`, or under a sub-directory of a multi-service repo (e.g. `service-foo/qavor.yaml`). A service manifest never defines the workspace repo set — the list of repositories comes solely from the `kind: project` manifest's `repositories:` list.",
+  "description": "Runnable application: how to build and execute an app. This single kind covers both first-party apps (built and run natively or in a container) and externally provided backing dependencies such as postgres/kafka/redis (typically run via `docker-compose` per ADR-005, exposing a `env.publish` contract to dependents). Lives at the root of a single-service repo as `qavor.yaml`, or under a sub-directory of a multi-service repo (e.g. `service-foo/qavor.yaml`). A service manifest never defines the workspace repo set — the list of repositories comes solely from the `kind: project` manifest's `repositories:` list.",
   "type": "object",
   "additionalProperties": false,
   "required": ["kind", "name"],
@@ -30,19 +30,22 @@
     },
     "runtime": {
       "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/runtimeBlock",
-      "description": "Available runtime backends. Services typically declare `native` and/or `docker`. `docker-compose` is reserved for stateful manifests at v0."
+      "description": "Available runtime backends. First-party services typically declare `native` and/or `docker`; backing services typically declare `docker-compose`."
     },
     "mode": {
-      "description": "Default run mode for this service. Overridable per invocation via `--mode`. Must match a backend whose `enabled: true` is set on this service or one of its profiles.",
+      "description": "Default run mode for this service. Overridable per invocation via `--mode`. Must match a backend whose `enabled: true` is set on this service or one of its profiles. Backing services typically use `docker-compose`.",
       "type": "string",
-      "enum": ["native", "docker"]
+      "enum": ["native", "docker", "docker-compose"]
     },
     "require": {
       "type": "array",
       "items": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/requirement" },
       "description": "Dependencies that must be running before this service starts."
     },
-    "env": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/envBlock" },
+    "env": {
+      "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/envBlock",
+      "description": "Layered env block. A backing service may set `env.publish` — the explicit contract exposed to dependents at start time; values are interpolated against the resolved env of this service."
+    },
     "hooks": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/hooks" }
   }
 }

@@ -4,7 +4,7 @@ Source-of-truth task list for the **v0 / MVP** milestone defined in section 10 o
 
 **Scope statement.** The MVP must let a single developer run `qavor init <project-repo-source>` against a project repo whose `kind: project` manifest enumerates a small set of repos (the sole source of the workspace repo set), clone them, run any prepare commands declared by the `kind: service` manifests found in those repos, and start those services in **native mode** with layered env vars composed per the documented resolution order.
 
-No groups (selectors), no cross-service graph orchestration, no docker mode, no stateful, no profiles. Those land in v0.5 / v1 per the roadmap.
+No groups (selectors), no cross-service graph orchestration, no docker mode, no backing services (`docker-compose` + `env.publish`), no profiles. Those land in v0.5 / v1 per the roadmap.
 
 **Time budget.** 4–6 weeks of focused work for one engineer.
 
@@ -30,7 +30,7 @@ No groups (selectors), no cross-service graph orchestration, no docker mode, no 
 
 ## Workstream B — Manifest model & validation
 
-- [ ] **B1.** Vendor [`docs/schemas/qavor.schema.json`](./schemas/qavor.schema.json) and the per-kind schemas (`workspaces`, `project`, `service`, `stateful`, `profile`, plus shared `qavor.defs.schema.json`) into `src/schema/` and import them as JSON modules.
+- [ ] **B1.** Vendor [`docs/schemas/qavor.schema.json`](./schemas/qavor.schema.json) and the per-kind schemas (`workspaces`, `project`, `service`, `profile`, plus shared `qavor.defs.schema.json`) into `src/schema/` and import them as JSON modules.
 - [ ] **B2.** Implement an asynchronous YAML loader that preserves source positions and supports multi-document files (`---` separated). Use `yaml` (eemeli/yaml) — read files via `node:fs/promises` and use the CST/AST surface to map nodes back to `file:line:column`. Loader returns one parsed document per `kind:` node.
 - [ ] **B3.** Wire `ajv` (draft 2020-12) + `ajv-formats` for validation; dispatch each loaded document to the per-kind schema based on its `kind:` field. Compile schemas once at startup; map Ajv errors back to `file:line:path` using the position info from B2.
 - [ ] **B4.** Generate TypeScript types for the six manifest kinds from the JSON Schemas via `json-schema-to-typescript` (kept in sync via a `pnpm gen:types` script run in CI). `kind:` is the discriminated-union tag; each kind has its own type. Hand-write narrow runtime guards where the generator falls short.
@@ -70,26 +70,26 @@ No groups (selectors), no cross-service graph orchestration, no docker mode, no 
   - any `qavor.yaml` files under a `qavor/` directory at the repo root, or
   - any `<sub-dir>/qavor.yaml` under the repo root.
   Build the workspace registry: `name → (kind, file, parsed)`.
-- [ ] **E2.** Validate cross-references: every name in a `kind: project` `repositories:` entry must resolve to a cloned repo; every `kind: service` / `kind: stateful` `name:` must be unique workspace-wide. Stateful and profile references are flagged "out of MVP scope" if encountered (warn, do not fail).
-- [ ] **E3.** Tests: registry built correctly for fixture workspace; duplicate names error out with file+line; unknown kinds in v0 (`stateful`, `profile`) are visible as warnings.
+- [ ] **E2.** Validate cross-references: every name in a `kind: project` `repositories:` entry must resolve to a cloned repo; every `kind: service` `name:` must be unique workspace-wide. Backing-service (`env.publish`) and profile references are flagged "out of MVP scope" if encountered (warn, do not fail).
+- [ ] **E3.** Tests: registry built correctly for fixture workspace; duplicate names error out with file+line; out-of-MVP kinds in v0 (`profile`) are visible as warnings.
 
 ## Workstream F — Dependency preparation (via `runtime.native.prepare`)
 
 - [ ] **F1.** Implement `src/prepare/` that, for each selected `kind: service`, runs the `runtime.native.prepare.cmd` declared on the service (or its profile, post-MVP) via `execa`. The command executes asynchronously in the service's manifest directory with the composed env; stdout/stderr stream to per-service log files.
 - [ ] **F2.** Lockfile-aware skip — asynchronously hash a configurable list of files (default heuristics: `package-lock.json`/`pnpm-lock.yaml`/`yarn.lock` for node, `uv.lock` for python) via streaming `crypto.createHash` and write to `.qavor/cache/prepare/<service>.json`; skip when unchanged unless `--force`.
 - [ ] **F3.** `qavor prepare [--repo <name>]` command. Parallel across services via `p-queue`, honouring the global `--jobs` setting.
-- [ ] **F4.** Run `pre_prepare` / `post_prepare` hooks declared on the service or stateful manifest in scope.
+- [ ] **F4.** Run `pre_prepare` / `post_prepare` hooks declared on the service manifest in scope.
 - [ ] **F5.** Tests: fixture node service + fixture python/uv service prepare on first run; cache hit on re-run; `--force` invalidates.
 
 ## Workstream G — Environment composition (MVP subset)
 
-> Scope: native mode only. No stateful publish propagation (no stateful in MVP). No `${secret:...}` interpolation.
+> Scope: native mode only. No `env.publish` propagation from backing services (out of MVP). No `${secret:...}` interpolation.
 
 - [ ] **G1.** Implement layered env composer with the MVP precedence (later wins):
   1. Service: `env.common`, then `env.native`, then `<manifest-dir>/.env`, then `<manifest-dir>/.env.native`.
   2. Workspace `.env` (next to the `kind: workspaces` pointer).
   3. CLI `--env KEY=VAL`.
-  Profiles, required-dep contributions, and stateful `publish:` propagation land in v0.5.
+  Profiles, required-dep contributions, and backing-service `env.publish:` propagation land in v0.5.
 - [ ] **G2.** Implement interpolation for `${VAR}` against prior layers and process env. Reject unresolved references unless the env entry is a long-form `envSpec` with `default:` set.
 - [ ] **G3.** Honor long-form `envSpec` `required: true` and `secret: true`. Missing required vars fail at start with file+line provenance. Secret vars are redacted in logs and `qavor env` output (full value still passed to the child process).
 - [ ] **G4.** `qavor env <service>` prints resolved env with provenance (file + line + layer for each var).
@@ -131,9 +131,9 @@ These are real requirements, intentionally pushed to v0.5 / v1 / later:
 - Filtered selectors (`--group`, `--tag`, `--dirty`, `--ahead`, `--behind`).
 - Dependency graph, topological start, cross-service / cross-repo `require:` resolution at runtime.
 - Readiness probes (HTTP/TCP/command), `waitFor: ready` semantics.
-- `kind: stateful` execution (postgres/mysql/kafka), generated compose project, `env.publish:` propagation, seed/migrations, snapshot/restore.
+- Backing-service execution (`mode: docker-compose` for postgres/mysql/kafka), generated compose project, `env.publish:` propagation, seed/migrations, snapshot/restore.
 - `mode: docker` for services — container build & run, image templating, registry push.
-- `kind: profile` resolution — `profiles:` lists on services / stateful, profile chaining.
+- `kind: profile` resolution — `profiles:` lists on services, profile chaining.
 - Multi-language ergonomics through curated profile bundles (go, rust, java, ruby, dotnet beyond what `runtime.native.prepare.cmd` already supports).
 - Toolchain version management via `mise`/`asdf`.
 - Secrets providers (1Password / sops / vault) — MVP only honors `.env` / `.env.native` / `.env.local`.
@@ -151,7 +151,7 @@ These are real requirements, intentionally pushed to v0.5 / v1 / later:
 
 | Risk | Mitigation |
 |---|---|
-| Scope creep — temptation to add stateful/profiles/graph for "completeness". | This task list is the contract; new items require an explicit roadmap revision. |
+| Scope creep — temptation to add backing services/profiles/graph for "completeness". | This task list is the contract; new items require an explicit roadmap revision. |
 | Native supervisor edge cases on macOS (process groups, controlling tty). | Spawn children with `execa({ detached: true })` so each runs in its own process group; signal the group via `process.kill(-pid, ...)`; cover with table-driven tests. |
 | YAML position info pass-through across multi-document files. | Pin to `yaml` (eemeli/yaml) early — it preserves positions and handles multi-doc via `parseAllDocuments`; test error-message quality in B6. |
 | Subprocess fan-out exhausting OS limits (file descriptors, RAM, ports) on large workspaces. | Every fan-out uses `p-queue` with concurrency defaulting to `os.availableParallelism()`; expose `--jobs N` everywhere; document the knob in `docs/cli.md`; smoke-test against a fixture workspace with 25 toy repos to catch FD leaks. |

@@ -3,14 +3,12 @@ export type {
   WorkspacesManifest,
   ProjectManifest,
   ServiceManifest,
-  StatefulManifest,
   ProfileManifest,
   ProjectRepoEntry,
   Requirement,
   Hooks,
   HookCommands,
   EnvBlock,
-  StatefulEnvBlock,
   EnvMap,
   EnvSpec,
   EnvScalar,
@@ -23,9 +21,4 @@ export type {
  * Discriminator helper. Useful in switch statements when narrowing a
  * QavorManifest by `kind:`.
  */
-export type ManifestKind =
-  | 'workspaces'
-  | 'project'
-  | 'service'
-  | 'stateful'
-  | 'profile';
+export type ManifestKind = 'workspaces' | 'project' | 'service' | 'profile';

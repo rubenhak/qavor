@@ -86,10 +86,10 @@ test('qavor manifests: prints each manifest issue with its location and message'
   const { base, ws } = await setupClonedWorkspace();
   try {
     // Introduce a dangling cross-reference: the web service requires a
-    // stateful that no manifest defines.
+    // service that no manifest defines.
     const webManifest = path.join(ws, 'web.git', 'qavor.yaml');
     const original = await fs.readFile(webManifest, 'utf8');
-    await fs.writeFile(webManifest, `${original.trimEnd()}\nrequire:\n  - stateful: ghost-db\n`);
+    await fs.writeFile(webManifest, `${original.trimEnd()}\nrequire:\n  - service: ghost-db\n`);
 
     const r = await runCli(['manifests'], { cwd: ws });
     assert.equal(r.exitCode, 0, r.stderr);
@@ -106,12 +106,12 @@ test('qavor manifests: prints each manifest issue with its location and message'
 test('qavor manifests: groups multiple documents from a single multi-doc file', async () => {
   const { base, ws } = await setupClonedWorkspace();
   try {
-    // Append a stateful document to the web repo's root manifest.
+    // Append a second (backing) service document to the web repo's root manifest.
     const webManifest = path.join(ws, 'web.git', 'qavor.yaml');
     const original = await fs.readFile(webManifest, 'utf8');
     await fs.writeFile(
       webManifest,
-      `${original.trimEnd()}\n---\nkind: stateful\nname: cache\nmode: docker-compose\n`,
+      `${original.trimEnd()}\n---\nkind: service\nname: cache\nmode: docker-compose\n`,
     );
 
     const r = await runCli(['--json', 'manifests'], { cwd: ws });
@@ -121,7 +121,7 @@ test('qavor manifests: groups multiple documents from a single multi-doc file', 
     assert.ok(webRepo, 'expected a web repo node');
     // Both documents live in the same file entry, in document order.
     const kinds = webRepo.files[0].manifests.map((m: { kind: string }) => m.kind);
-    assert.deepEqual(kinds, ['service', 'stateful']);
+    assert.deepEqual(kinds, ['service', 'service']);
   } finally {
     await cleanup(base);
     await cleanup(ws);
