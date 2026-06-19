@@ -72,7 +72,7 @@ async function loadProjectRepos(): Promise<{ workspaceRoot: string; repos: Resol
 }
 
 function repoOption(c: Command): Command {
-  return c.option('--repo <name...>', 'Operate on a subset of repos by name.');
+  return c.option('--only <name...>', 'Operate on a subset of repos by name.');
 }
 
 /**
@@ -93,11 +93,11 @@ export function registerGitCommands(program: Command): void {
 
   repoOption(
     git.command('clone').description('Clone every repo enumerated in the project manifest.'),
-  ).action(async (opts: { repo?: string[] }, cmd: Command) => {
+  ).action(async (opts: { only?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const logger = getLogger();
     const { workspaceRoot, repos } = await loadProjectRepos();
-    const selected = selectRepos(repos, opts.repo);
+    const selected = selectRepos(repos, opts.only);
     const plan = resolveExecutionPlan(root, 'parallel');
 
     const view = createActionView(
@@ -130,13 +130,13 @@ export function registerGitCommands(program: Command): void {
       .description(
         'Clone any missing repos, then `git fetch && git pull --ff-only` across the rest.',
       ),
-  ).action(async (opts: { repo?: string[] }, cmd: Command) => {
+  ).action(async (opts: { only?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const logger = getLogger();
     // Keep every selected repo: a repo that isn't on disk yet is cloned here
     // rather than skipped, so `sync` reconciles the workspace to the manifest.
     const { repos } = await loadProjectRepos();
-    const selected = selectRepos(repos, opts.repo);
+    const selected = selectRepos(repos, opts.only);
     const plan = resolveExecutionPlan(root, 'parallel');
     const view = createActionView(
       selected.map((r) => r.name),
@@ -182,14 +182,14 @@ export function registerGitCommands(program: Command): void {
         '--show-visibility',
         'Include each GitHub repo’s visibility (public/private/internal) via the `gh` CLI.',
       ),
-  ).action(async (opts: { repo?: string[]; showVisibility?: boolean }, cmd: Command) => {
+  ).action(async (opts: { only?: string[]; showVisibility?: boolean }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const showVisibility = Boolean(opts.showVisibility);
     const { workspaceRoot, repos } = await loadProjectRepos();
     // Keep every selected repo (not just the present ones): repos enumerated in
     // the manifest but not yet cloned are reported as `missing` rather than
     // silently dropped.
-    const selected = selectRepos(repos, opts.repo);
+    const selected = selectRepos(repos, opts.only);
     const plan = resolveExecutionPlan(root, 'parallel');
 
     // Live table on stdout: rows appear up-front with a spinner and fill in as
@@ -253,7 +253,7 @@ export function registerGitCommands(program: Command): void {
   ).action(
     async (
       files: string[],
-      opts: { repo?: string[]; message?: string; allowEmpty?: boolean; verify?: boolean },
+      opts: { only?: string[]; message?: string; allowEmpty?: boolean; verify?: boolean },
       cmd: Command,
     ) => {
       const root = inheritRootOptions(cmd);
@@ -270,7 +270,7 @@ export function registerGitCommands(program: Command): void {
         }
       }
       const { repos } = await loadProjectRepos();
-      const selected = await reposPresent(selectRepos(repos, opts.repo));
+      const selected = await reposPresent(selectRepos(repos, opts.only));
       // Commits mutate working trees and may fire pre-commit hooks that share
       // caches, so default to serial; users opt into `--parallel` explicitly.
       const plan = resolveExecutionPlan(root, 'serial');
@@ -312,10 +312,10 @@ export function registerGitCommands(program: Command): void {
 
   repoOption(
     git.command('push').description('git push the current branch across selected repos.'),
-  ).action(async (opts: { repo?: string[] }, cmd: Command) => {
+  ).action(async (opts: { only?: string[] }, cmd: Command) => {
     const root = inheritRootOptions(cmd);
     const { repos } = await loadProjectRepos();
-    const selected = await reposPresent(selectRepos(repos, opts.repo));
+    const selected = await reposPresent(selectRepos(repos, opts.only));
     const plan = resolveExecutionPlan(root, 'parallel');
     const view = createActionView(
       selected.map((r) => r.name),

@@ -2,7 +2,7 @@ import { isDirectory } from '../util/fs.js';
 import type { ResolvedRepo } from '../workspace/repos.js';
 
 /**
- * Filter resolved repos by the `--repo` CLI selector. Empty selector means
+ * Filter resolved repos by the `--only` CLI selector. Empty selector means
  * "all repos". Throws when a name is given that isn't in the project.
  */
 export function selectRepos(all: ResolvedRepo[], selector?: string[]): ResolvedRepo[] {

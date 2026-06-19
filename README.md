@@ -65,7 +65,7 @@ qavor ps                                # liveness + uptime of tracked services
 qavor down auth                         # graceful SIGTERM then SIGKILL
 ```
 
-All multi-repo verbs accept `--repo <name...>` selectors today. Group selectors, filter flags, docker mode, stateful services, profiles, and the dependency graph are deferred per [`docs/mvp-tasks.md`](./docs/mvp-tasks.md).
+All multi-repo verbs accept `--only <name...>` selectors today (filtering repos for git operations and services elsewhere). Group selectors, filter flags, docker mode, stateful services, profiles, and the dependency graph are deferred per [`docs/mvp-tasks.md`](./docs/mvp-tasks.md).
 
 `--json` flips every command to NDJSON output on stdout. Logs are always on stderr. Exit codes follow [`docs/exit-codes.md`](./docs/exit-codes.md). Global `--jobs N` overrides the default `os.availableParallelism()` concurrency for every fan-out.
 
