@@ -32,6 +32,8 @@ export interface PrepareInput {
   logger: Logger;
   signal?: AbortSignal;
   cliEnv?: Record<string, string>;
+  /** Stream the prepare command's output to stderr instead of the log file. */
+  verbose?: boolean;
 }
 
 export interface PrepareResult {
@@ -93,38 +95,44 @@ export async function prepareService(input: PrepareInput): Promise<PrepareResult
     ...(input.signal ? { signal: input.signal } : {}),
   });
 
-  await ensureDir(path.join(input.paths.logsDir, input.service.name));
-  const logFile = path.join(input.paths.logsDir, input.service.name, 'prepare.log');
   input.logger.info({ service: input.service.name, cmd }, 'prepare: starting');
 
   const cwd = input.service.runtime?.native?.prepare?.cwd
     ? path.resolve(manifestDir, input.service.runtime.native.prepare.cwd)
     : manifestDir;
 
-  const fileHandle = await fs.open(logFile, 'a');
+  // In --verbose mode stream the child's output to our stderr (keeping stdout
+  // clean for the status table / NDJSON); otherwise capture it to a log file.
+  const verbose = input.verbose ?? false;
+  const logFile = path.join(input.paths.logsDir, input.service.name, 'prepare.log');
+  const logHint = verbose ? '' : ` See ${logFile}.`;
+  let fileHandle: fs.FileHandle | undefined;
+  if (!verbose) {
+    await ensureDir(path.join(input.paths.logsDir, input.service.name));
+    fileHandle = await fs.open(logFile, 'a');
+  }
+  const sink = fileHandle ? fileHandle.fd : process.stderr;
   const shell = input.service.runtime?.native?.prepare?.shell ?? '/bin/sh';
   try {
     const opts: ExecaOptions = {
       cwd,
       env: { ...process.env, ...env },
-      stdio: ['ignore', fileHandle.fd, fileHandle.fd] as ExecaOptions['stdio'],
+      stdio: ['ignore', sink, sink] as ExecaOptions['stdio'],
       ...(input.signal ? { cancelSignal: input.signal } : {}),
       reject: false,
     };
     const res = await execa(shell, ['-c', cmd], opts);
     if (res.exitCode !== 0) {
       throw new RuntimeFailure(
-        `prepare failed for ${input.service.name} (exit ${res.exitCode}). See ${logFile}.`,
+        `prepare failed for ${input.service.name} (exit ${res.exitCode}).${logHint}`,
       );
     }
   } catch (err) {
     if (err instanceof RuntimeFailure) throw err;
     const message = err instanceof Error ? err.message : String(err);
-    throw new RuntimeFailure(
-      `prepare failed for ${input.service.name}: ${message}. See ${logFile}.`,
-    );
+    throw new RuntimeFailure(`prepare failed for ${input.service.name}: ${message}.${logHint}`);
   } finally {
-    await fileHandle.close();
+    await fileHandle?.close();
   }
 
   await runHooks({

@@ -65,6 +65,7 @@ export function registerPrepare(program: Command): void {
             service,
             force: Boolean(opts.force),
             logger,
+            verbose: root.verbose,
           };
           if (cliEnv) prepareOpts.cliEnv = cliEnv;
           return prepareService(prepareOpts);
