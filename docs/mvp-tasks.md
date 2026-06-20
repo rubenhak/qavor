@@ -75,7 +75,7 @@ No groups (selectors), no cross-service graph orchestration, no docker mode, no 
 
 ## Workstream F — Dependency preparation (via `runtime.native.prepare`)
 
-- [ ] **F1.** Implement `src/prepare/` that, for each selected `kind: service`, runs the `runtime.native.prepare.cmd` declared on the service (or its profile, post-MVP) via `execa`. The command executes asynchronously in the service's manifest directory with the composed env. The command's stdout/stderr are discarded by default and passed through raw to the terminal under `--verbose`; no per-service log files are written.
+- [ ] **F1.** Implement `src/prepare/` that, for each selected `kind: service`, runs the `runtime.native.prepare.cmd` declared on the service (or its profile, post-MVP) via `execa`. The command executes asynchronously in the service's manifest directory with the composed env. The command's stdout/stderr are discarded by default and passed through raw to the terminal only under `--verbose` **and** serial execution (in parallel the output would interleave unreadably, so it stays suppressed); no per-service log files are written.
 - [ ] **F2.** Lockfile-aware skip — asynchronously hash a configurable list of files (default heuristics: `package-lock.json`/`pnpm-lock.yaml`/`yarn.lock` for node, `uv.lock` for python) via streaming `crypto.createHash` and write to `.qavor/cache/prepare/<service>.json`; skip when unchanged unless `--force`.
 - [ ] **F3.** `qavor prepare [--repo <name>]` command. Parallel across services via `p-queue`, honouring the global `--jobs` setting.
 - [ ] **F4.** Run `pre_prepare` / `post_prepare` hooks declared on the service manifest in scope.

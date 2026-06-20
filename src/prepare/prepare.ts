@@ -34,6 +34,9 @@ export interface PrepareInput {
   cliEnv?: Record<string, string>;
   /** Pass the prepare command's raw output through to the terminal. */
   verbose?: boolean;
+  /** Whether the fan-out runs one service at a time. Raw output streams only
+   *  in serial mode (parallel runs would interleave output unreadably). */
+  serial?: boolean;
 }
 
 export interface PrepareResult {
@@ -101,14 +104,15 @@ export async function prepareService(input: PrepareInput): Promise<PrepareResult
     ? path.resolve(manifestDir, input.service.runtime.native.prepare.cwd)
     : manifestDir;
 
-  // In --verbose mode the prepare command's raw stdout/stderr pass straight
-  // through to the terminal; otherwise its output is discarded. No log file.
-  const verbose = input.verbose ?? false;
+  // The prepare command's raw stdout/stderr pass straight through to the
+  // terminal only under --verbose AND serial execution; in parallel the output
+  // would interleave unreadably, so it is discarded. No log file either way.
+  const stream = (input.verbose ?? false) && (input.serial ?? false);
   const shell = input.service.runtime?.native?.prepare?.shell ?? '/bin/sh';
   const opts: ExecaOptions = {
     cwd,
     env: { ...process.env, ...env },
-    stdio: verbose ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'ignore', 'ignore'],
+    stdio: stream ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'ignore', 'ignore'],
     ...(input.signal ? { cancelSignal: input.signal } : {}),
     reject: false,
   };
@@ -117,7 +121,7 @@ export async function prepareService(input: PrepareInput): Promise<PrepareResult
     if (res.exitCode !== 0) {
       throw new RuntimeFailure(
         `prepare failed for ${input.service.name} (exit ${res.exitCode}).` +
-          (verbose ? '' : ' Re-run with --verbose to see the command output.'),
+          (stream ? '' : ' Re-run with --serial --verbose to see the command output.'),
       );
     }
   } catch (err) {

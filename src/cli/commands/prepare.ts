@@ -66,6 +66,7 @@ export function registerPrepare(program: Command): void {
             force: Boolean(opts.force),
             logger,
             verbose: root.verbose,
+            serial: plan.mode === 'serial',
           };
           if (cliEnv) prepareOpts.cliEnv = cliEnv;
           return prepareService(prepareOpts);
