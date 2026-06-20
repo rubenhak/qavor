@@ -7,7 +7,7 @@ import { assertNoIssues, composeServiceEnv, toEnvObject } from '../env/composer.
 import type { LoadedDocument } from '../manifest/loader.js';
 import type { ServiceManifest } from '../manifest/types/index.js';
 import { ManifestError, RuntimeFailure } from '../util/exit-codes.js';
-import { ensureDir, pathExists, readJsonFile, writeJsonFile } from '../util/fs.js';
+import { pathExists, readJsonFile, writeJsonFile } from '../util/fs.js';
 import { runHooks } from '../util/hooks.js';
 import type { Logger } from '../util/logger.js';
 import type { WorkspacePaths } from '../workspace/paths.js';
@@ -32,7 +32,7 @@ export interface PrepareInput {
   logger: Logger;
   signal?: AbortSignal;
   cliEnv?: Record<string, string>;
-  /** Stream the prepare command's output to stderr instead of the log file. */
+  /** Pass the prepare command's raw output through to the terminal. */
   verbose?: boolean;
 }
 
@@ -101,38 +101,29 @@ export async function prepareService(input: PrepareInput): Promise<PrepareResult
     ? path.resolve(manifestDir, input.service.runtime.native.prepare.cwd)
     : manifestDir;
 
-  // In --verbose mode stream the child's output to our stderr (keeping stdout
-  // clean for the status table / NDJSON); otherwise capture it to a log file.
+  // In --verbose mode the prepare command's raw stdout/stderr pass straight
+  // through to the terminal; otherwise its output is discarded. No log file.
   const verbose = input.verbose ?? false;
-  const logFile = path.join(input.paths.logsDir, input.service.name, 'prepare.log');
-  const logHint = verbose ? '' : ` See ${logFile}.`;
-  let fileHandle: fs.FileHandle | undefined;
-  if (!verbose) {
-    await ensureDir(path.join(input.paths.logsDir, input.service.name));
-    fileHandle = await fs.open(logFile, 'a');
-  }
-  const sink = fileHandle ? fileHandle.fd : process.stderr;
   const shell = input.service.runtime?.native?.prepare?.shell ?? '/bin/sh';
+  const opts: ExecaOptions = {
+    cwd,
+    env: { ...process.env, ...env },
+    stdio: verbose ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'ignore', 'ignore'],
+    ...(input.signal ? { cancelSignal: input.signal } : {}),
+    reject: false,
+  };
   try {
-    const opts: ExecaOptions = {
-      cwd,
-      env: { ...process.env, ...env },
-      stdio: ['ignore', sink, sink] as ExecaOptions['stdio'],
-      ...(input.signal ? { cancelSignal: input.signal } : {}),
-      reject: false,
-    };
     const res = await execa(shell, ['-c', cmd], opts);
     if (res.exitCode !== 0) {
       throw new RuntimeFailure(
-        `prepare failed for ${input.service.name} (exit ${res.exitCode}).${logHint}`,
+        `prepare failed for ${input.service.name} (exit ${res.exitCode}).` +
+          (verbose ? '' : ' Re-run with --verbose to see the command output.'),
       );
     }
   } catch (err) {
     if (err instanceof RuntimeFailure) throw err;
     const message = err instanceof Error ? err.message : String(err);
-    throw new RuntimeFailure(`prepare failed for ${input.service.name}: ${message}.${logHint}`);
-  } finally {
-    await fileHandle?.close();
+    throw new RuntimeFailure(`prepare failed for ${input.service.name}: ${message}.`);
   }
 
   await runHooks({
