@@ -4,6 +4,7 @@ import pMap from 'p-map';
 import { isDirectory } from '../util/fs.js';
 import { getLogger } from '../util/logger.js';
 import { type LoadedDocument, loadManifestFile } from './loader.js';
+import { resolveManifest } from './resolve.js';
 import type { ManifestKind, Requirement } from './types/index.js';
 import { formatIssue, isKnownKind, type ValidationIssue, validateDocument } from './validator.js';
 
@@ -98,8 +99,16 @@ export interface RegistryEntry {
   dir: string;
   /** Optional repo name this manifest belongs to. */
   repo?: string;
+  /**
+   * The manifest body. Profiles referenced via `profiles:` are flattened in at
+   * registry-build time (see {@link resolveProfiles}), so this is the
+   * *effective* definition every command consumes — runtime/mode/env carry the
+   * merged values and the now-redundant `profiles:` key is removed.
+   */
   data: LoadedDocument['data'];
   position: LoadedDocument['position'];
+  /** Profile names flattened into `data`, in resolution order (earliest first). */
+  appliedProfiles?: string[];
 }
 
 export interface WorkspaceRegistry {
@@ -224,7 +233,49 @@ export async function buildWorkspaceRegistry(opts: DiscoveryOptions): Promise<Wo
   // manifest that actually exists in the workspace.
   checkCrossReferences(all, issues);
 
-  return { byName, entries: all, issues };
+  // Profile resolution: flatten every referenced profile into each entry's
+  // runtime/mode/env so downstream commands (prepare, run, env, …) consume the
+  // effective definition without re-resolving.
+  const registry: WorkspaceRegistry = { byName, entries: all, issues };
+  resolveProfiles(registry);
+
+  return registry;
+}
+
+/**
+ * Flatten `profiles:` into every entry's `data` in place. Resolution is
+ * computed against the still-raw entries first and assigned in a second pass,
+ * so chained profiles always read pre-resolution data regardless of iteration
+ * order. Resolution failures (profile cycles; missing profiles already flagged
+ * by {@link checkCrossReferences}) are recorded as issues, deduped by message,
+ * and leave the offending entry's data untouched.
+ */
+function resolveProfiles(registry: WorkspaceRegistry): void {
+  const seen = new Set(registry.issues.map((i) => i.message));
+  const resolved: { entry: RegistryEntry; data: RegistryEntry['data']; applied: string[] }[] = [];
+  for (const entry of registry.entries) {
+    try {
+      const r = resolveManifest(entry, registry);
+      resolved.push({ entry, data: r.data as RegistryEntry['data'], applied: r.appliedProfiles });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (seen.has(message)) continue;
+      seen.add(message);
+      const pos = entry.position('/profiles');
+      registry.issues.push({
+        file: pos.file,
+        line: pos.line,
+        column: pos.column,
+        kind: entry.kind,
+        path: '/profiles',
+        message,
+      });
+    }
+  }
+  for (const { entry, data, applied } of resolved) {
+    entry.data = data;
+    entry.appliedProfiles = applied;
+  }
 }
 
 /** Strip a `<repo>:<name>` qualifier down to the bare reference name. */

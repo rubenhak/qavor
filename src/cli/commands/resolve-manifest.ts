@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { stringify } from 'yaml';
 import { buildWorkspaceRegistry, reportRegistryIssues } from '../../manifest/discovery.js';
-import { findManifest, resolveManifest } from '../../manifest/resolve.js';
+import { findManifest } from '../../manifest/resolve.js';
 import type { ManifestKind, ProjectManifest } from '../../manifest/types/index.js';
 import { resolveJobs } from '../../util/concurrency.js';
 import { UserError } from '../../util/exit-codes.js';
@@ -75,19 +75,21 @@ export function registerResolveManifest(program: Command): void {
       // help debug those very issues, so it must not fail closed on them.
       reportRegistryIssues(registry.issues);
 
+      // Profiles are flattened into the entry at registry-build time, so the
+      // registry already holds the effective definition; this command merely
+      // prints it.
       const target = findManifest(registry, opts.name, kind);
-      const resolved = resolveManifest(target, registry);
       logger.debug(
-        { kind: resolved.kind, name: resolved.name, profiles: resolved.appliedProfiles },
+        { kind: target.kind, name: target.name, profiles: target.appliedProfiles ?? [] },
         'manifest resolved',
       );
 
       if (format === 'json') {
-        emitJson(resolved.data);
+        emitJson(target.data);
         return;
       }
       // stringify always ends with a trailing newline; emit adds one of its own,
       // so trim to avoid a blank line.
-      emit(stringify(resolved.data).replace(/\n$/, ''));
+      emit(stringify(target.data).replace(/\n$/, ''));
     });
 }

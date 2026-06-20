@@ -97,6 +97,8 @@ A repo may put all manifests in one multi-document `qavor.yaml` (separated by `-
 
 Cross-repo refs use names (`{ service: token-issuer }`, `{ service: postgres }`); names are unique workspace-wide. The workspace registry is `name → (kind, file, parsed)`.
 
+**Profile resolution happens at registry-build time.** When `buildWorkspaceRegistry` assembles the registry, every entry's `profiles:` chain is flattened into its `runtime`/`mode`/`env` (later profiles and the entry's own values winning; chained profiles supported) and the `profiles:` key is dropped. Every command (`prepare`, `up`, `env`, …) therefore reads the *effective* definition from `entry.data` without re-resolving. The standalone `resolve-manifest` command is purely a debug printer over that already-resolved data. Profile cycles and unknown profile references are reported as manifest issues. Keep the flattening logic in `manifest/resolve.ts` as the single implementation.
+
 ---
 
 ## 7. Environment composition (later wins)
@@ -194,6 +196,7 @@ Keep files small and single-purpose. Don't introduce framework-style abstraction
 - `qavor init`, `qavor doctor`, `qavor clone`, `qavor sync`, `qavor status`, `qavor commit`, `qavor push`, `qavor prepare`, `qavor up <service>`, `qavor down <service>`, `qavor logs <service>`, `qavor ps`, `qavor env <service>`, `qavor validate`, `qavor workspace info`.
 - Native mode only. One service per `qavor up` invocation. No graph orchestration yet.
 - `--repo <name>` and "all repos" forms only — no `--group` / `--tag` / state filters in MVP.
+- `kind: profile` resolution and chaining: profiles are flattened into each manifest's `runtime`/`mode`/`env` at registry-build time and consumed by every command. See §6.
 
 **Explicitly out of MVP (deferred to v0.5 / v1):**
 - Groups & group selectors; filtered selectors; state filters.
@@ -201,7 +204,6 @@ Keep files small and single-purpose. Don't introduce framework-style abstraction
 - Readiness probes, `waitFor: ready`.
 - Backing-service execution (`mode: docker-compose`), generated compose project, `env.publish:` propagation.
 - `mode: docker` for services — container build/run, image templating, registry push.
-- `kind: profile` resolution and chaining.
 - Secrets providers (1Password / sops / vault); `${secret:...}` v0 fails closed.
 - `qavor explain`, `qavor graph`, `qavor docs`, `qavor branch`, PR helpers, tag/release, stash, snapshot/restore, hot reload, debug mode, plugin system, alt container runtimes, telemetry.
 
