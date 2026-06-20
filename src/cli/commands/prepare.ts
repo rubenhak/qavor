@@ -6,11 +6,12 @@ import { loadManifestFile } from '../../manifest/loader.js';
 import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
 import { prepareService } from '../../prepare/prepare.js';
 import { runFanOut } from '../../util/concurrency.js';
-import { UserError } from '../../util/exit-codes.js';
-import { emit, emitJson, getLogger } from '../../util/logger.js';
+import { RuntimeFailure, UserError } from '../../util/exit-codes.js';
+import { emitJson, getLogger } from '../../util/logger.js';
 import { readProjectManifest, resolveWorkspace } from '../../workspace/locate.js';
 import { resolveRepos } from '../../workspace/repos.js';
 import { inheritRootOptions, resolveExecutionPlan } from '../options.js';
+import { createPrepareView, type PrepareRow } from './prepare-view.js';
 
 export function registerPrepare(program: Command): void {
   program
@@ -52,9 +53,17 @@ export function registerPrepare(program: Command): void {
 
       const cliEnv = opts.env ? parseCliEnv(opts.env) : undefined;
 
-      const results = await runFanOut(
+      // Live table on stdout: one row per service, each pending with a spinner
+      // until its prepare resolves. Auto-disabled for --json, non-TTY, and
+      // --verbose (where the prepare command's raw output shares the terminal);
+      // those fall back to a single static render in `finish`.
+      const view = createPrepareView(
+        services.map((s) => s.name),
+        { enabled: !root.json && !root.verbose },
+      );
+      const rows = await runFanOut(
         services,
-        async (entry) => {
+        async (entry, index): Promise<PrepareRow> => {
           const docs = await loadManifestFile(entry.file);
           const serviceDoc = docs[entry.docIndex] as LoadedDocument;
           const service = entry.data as unknown as ServiceManifest;
@@ -67,17 +76,47 @@ export function registerPrepare(program: Command): void {
             serial: plan.mode === 'serial',
           };
           if (cliEnv) prepareOpts.cliEnv = cliEnv;
-          return prepareService(prepareOpts);
+          let row: PrepareRow;
+          try {
+            const res = await prepareService(prepareOpts);
+            row =
+              res.status === 'ok'
+                ? { service: res.serviceName, outcome: 'ran', status: 'prepared' }
+                : {
+                    service: res.serviceName,
+                    outcome: 'skip',
+                    status: 'no prepare',
+                    detail: 'no prepare command',
+                  };
+          } catch (err) {
+            row = {
+              service: entry.name,
+              outcome: 'fail',
+              status: 'failed',
+              detail: err instanceof Error ? err.message : String(err),
+            };
+          }
+          view.resolve(index, row);
+          return row;
         },
         plan,
       );
 
       if (root.json) {
-        emitJson({ results });
-        return;
+        // Preserve the machine contract: `serviceName` plus the underlying
+        // `ok` / `no-prepare-cmd` status, with `failed` for errored services.
+        emitJson({
+          results: rows.map((r) => ({
+            serviceName: r.service,
+            status: r.outcome === 'ran' ? 'ok' : r.outcome === 'skip' ? 'no-prepare-cmd' : 'failed',
+            ...(r.outcome === 'fail' && r.detail ? { error: r.detail } : {}),
+          })),
+        });
+      } else {
+        view.finish();
       }
-      for (const r of results) {
-        emit(`${r.status.padEnd(15)} ${r.serviceName}`);
+      if (rows.some((r) => r.outcome === 'fail')) {
+        throw new RuntimeFailure('Some services failed to prepare.');
       }
     });
 }
