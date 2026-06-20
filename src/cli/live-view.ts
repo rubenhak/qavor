@@ -1,4 +1,4 @@
-import { emit } from '../util/logger.js';
+import { emit, suspendLogging } from '../util/logger.js';
 import {
   colorEnabled,
   type Glyphs,
@@ -256,11 +256,15 @@ function altScreenView<R>(
     );
   };
 
+  // Suspend logging for the lifetime of the TUI: stray stderr log lines would
+  // scroll the alternate screen and make the animated view flicker.
+  const resumeLogging = suspendLogging();
   let restored = false;
   const restore = (): void => {
     if (restored) return;
     restored = true;
     stream.write(`${ALT_LEAVE}${CURSOR_SHOW}`);
+    resumeLogging();
   };
   const onSignal = (): void => {
     restore();
@@ -370,8 +374,12 @@ function streamingView<R>(
     return `${c.cyan(sp)} ${c.bold(counter)} ${c.dim(label)}`;
   };
 
+  // Suspend logging while the pinned status line is live: an interleaved stderr
+  // log line would land between rows and shove the status line around.
+  const resumeLogging = suspendLogging();
   let cursorShown = false;
   const showCursor = (): void => {
+    resumeLogging();
     if (!cursorShown) {
       cursorShown = true;
       stream.write(CURSOR_SHOW);

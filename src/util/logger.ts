@@ -44,6 +44,29 @@ export function getLogger(): Logger {
 }
 
 /**
+ * Silence all logger output until the returned resume function is called.
+ *
+ * The alternate-screen / streaming live views own the terminal while they
+ * animate, positioning the cursor with absolute escape sequences. A stray
+ * stderr log line written mid-animation (e.g. `prepare: starting`) scrolls the
+ * screen out from under the view and makes it flicker as the next frame
+ * repaints. While such a view is active we suspend logging entirely and restore
+ * the previous level when it tears down. Idempotent: calling resume twice is a
+ * no-op.
+ */
+export function suspendLogging(): () => void {
+  const logger = getLogger();
+  const previousLevel = logger.level;
+  logger.level = 'silent';
+  let resumed = false;
+  return () => {
+    if (resumed) return;
+    resumed = true;
+    logger.level = previousLevel;
+  };
+}
+
+/**
  * Plain stdout output for human-readable mode. Bypasses pino so tabular
  * output (`status`, `ps`, `env`) renders without log decorations.
  */
