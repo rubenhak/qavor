@@ -150,6 +150,11 @@ const CURSOR_HIDE = '\x1b[?25l';
 const CURSOR_SHOW = '\x1b[?25h';
 const CLEAR_SCREEN = '\x1b[2J';
 const CLEAR_LINE = '\r\x1b[2K'; // carriage-return + clear current line
+// Synchronized-output mode (DEC private mode 2026): the terminal buffers
+// everything between begin/end and presents it as one atomic frame, so a
+// multi-line repaint never shows half-drawn. Unsupported terminals ignore it.
+const SYNC_BEGIN = '\x1b[?2026h';
+const SYNC_END = '\x1b[?2026l';
 const at = (row: number, col = 1): string => `\x1b[${row};${col}H`; // absolute move
 
 /** Static, single-pass render used for the non-TTY / disabled / final path. */
@@ -202,6 +207,10 @@ function altScreenView<R>(
   // the table. Monotonic, so the view only ever scrolls downward.
   let maxResolved = -1;
   let scrollTop = 0;
+  // Set by resolve(), consumed by the animation timer: at least one row gained
+  // its result since the last frame, so the next tick repaints the whole window
+  // rather than just animating spinners.
+  let dirty = false;
 
   // Geometry (recomputed on resize). Layout: row 1 header, rows 2..1+visible
   // (a scrolling window over the full list), row 2+visible footer.
@@ -252,7 +261,7 @@ function altScreenView<R>(
 
   const fullRedraw = (): void => {
     stream.write(
-      `${CLEAR_SCREEN}${at(1)}\x1b[2K${headerLine(renderer.columns, layout, c)}${drawWindow()}${at(2 + visible)}\x1b[2K${footerLine()}`,
+      `${SYNC_BEGIN}${CLEAR_SCREEN}${at(1)}\x1b[2K${headerLine(renderer.columns, layout, c)}${drawWindow()}${at(2 + visible)}\x1b[2K${footerLine()}${SYNC_END}`,
     );
   };
 
@@ -286,16 +295,33 @@ function altScreenView<R>(
   process.once('SIGTERM', onSignal);
   stream.on('resize', onResize);
 
+  // All painting happens here, on a fixed cadence. Driving paints from a single
+  // timer (rather than from each resolve) coalesces a burst of resolutions — a
+  // fan-out where many items finish near-instantly — into one repaint per frame
+  // instead of dozens of full-window redraws back-to-back, which is what made
+  // the view flicker.
   const timer = setInterval(() => {
     frame += 1;
-    // Repaint pending visible rows (animates their spinner) plus the footer. No
-    // full-table repaint → output stays bounded by the window height.
-    let seq = '';
-    for (let slot = 0; slot < visible; slot++) {
-      const idx = scrollTop + slot;
-      if (idx < n && states[idx] == null) seq += `${at(2 + slot)}\x1b[2K${rowLine(idx)}`;
+    const newScroll = desiredScroll();
+    const scrolled = newScroll !== scrollTop;
+    let seq = SYNC_BEGIN;
+    if (dirty || scrolled) {
+      // Rows resolved (or the frontier scrolled) since the last frame: repaint
+      // the whole visible window so the new results all appear together.
+      scrollTop = newScroll;
+      dirty = false;
+      for (let slot = 0; slot < visible; slot++) {
+        const idx = scrollTop + slot;
+        seq += `${at(2 + slot)}\x1b[2K${idx < n ? rowLine(idx) : ''}`;
+      }
+    } else {
+      // Steady state: only repaint still-pending rows to animate their spinner.
+      for (let slot = 0; slot < visible; slot++) {
+        const idx = scrollTop + slot;
+        if (idx < n && states[idx] == null) seq += `${at(2 + slot)}\x1b[2K${rowLine(idx)}`;
+      }
     }
-    seq += `${at(2 + visible)}\x1b[2K${footerLine()}`;
+    seq += `${at(2 + visible)}\x1b[2K${footerLine()}${SYNC_END}`;
     stream.write(seq);
   }, FRAME_MS);
   timer.unref?.();
@@ -303,23 +329,11 @@ function altScreenView<R>(
   return {
     resolve(index, result) {
       if (index < 0 || index >= n) return;
+      // Record only; the animation timer paints. See its comment above.
       states[index] = result;
       done += 1;
       if (index > maxResolved) maxResolved = index;
-      const newScroll = desiredScroll();
-      if (newScroll !== scrollTop) {
-        // The frontier moved under the window edge: scroll and repaint the whole
-        // window (the row↔screen-line mapping shifted).
-        scrollTop = newScroll;
-        stream.write(`${drawWindow()}${at(2 + visible)}\x1b[2K${footerLine()}`);
-        return;
-      }
-      // No scroll: rewrite just this row (if visible) + footer.
-      let seq = '';
-      const slot = index - scrollTop;
-      if (slot >= 0 && slot < visible) seq += `${at(2 + slot)}\x1b[2K${rowLine(index)}`;
-      seq += `${at(2 + visible)}\x1b[2K${footerLine()}`;
-      stream.write(seq);
+      dirty = true;
     },
     finish() {
       clearInterval(timer);
