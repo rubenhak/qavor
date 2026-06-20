@@ -15,11 +15,10 @@ import { inheritRootOptions, resolveExecutionPlan } from '../options.js';
 export function registerPrepare(program: Command): void {
   program
     .command('prepare')
-    .description('Run `runtime.native.prepare` for every selected service (lockfile-aware skip).')
+    .description('Run `runtime.native.prepare` for every selected service.')
     .option('--only <name...>', 'Limit to specific service names.')
-    .option('--force', 'Re-run prepare even when the lockfile hash matches the cache.')
     .option('--env <kv...>', 'Override env values, KEY=VAL.')
-    .action(async (opts: { only?: string[]; force?: boolean; env?: string[] }, cmd: Command) => {
+    .action(async (opts: { only?: string[]; env?: string[] }, cmd: Command) => {
       const root = inheritRootOptions(cmd);
       const plan = resolveExecutionPlan(root, 'parallel');
       const logger = getLogger();
@@ -63,7 +62,6 @@ export function registerPrepare(program: Command): void {
             paths: ws.paths,
             serviceDoc,
             service,
-            force: Boolean(opts.force),
             logger,
             verbose: root.verbose,
             serial: plan.mode === 'serial',

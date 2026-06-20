@@ -58,7 +58,7 @@ src/
 ├── workspace/      # Workspace init, .qavor/ state directory management
 ├── git/            # Git wrapper: execa for mutations, simple-git for read-only inspection
 ├── env/            # Layered env composer with provenance tracking
-├── prepare/        # runtime.*.prepare execution, lockfile-hash skip cache
+├── prepare/        # runtime.*.prepare execution
 ├── supervisor/     # native.ts (own supervisor via execa), compose.ts (docker compose driver)
 └── util/           # Concurrency helpers (p-queue/p-limit/p-map), AbortSignal, fs utils
 ```

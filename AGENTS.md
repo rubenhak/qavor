@@ -147,7 +147,7 @@ The full chain is defined in `docs/proposal.md` §6 and `docs/manifests.md`. Sum
 ├── state/                           # PIDs, supervisor state, health-check results
 ├── logs/<service>/                  # rotated log files
 ├── compose/                         # generated docker compose project
-├── cache/                           # lockfile hashes, resolved env, dep graph
+├── cache/                           # resolved env, dep graph
 ├── workspace.json                   # project name, project repo path, manifest hash
 └── config.local.yaml                # workspace-local non-secret overrides
 
@@ -172,7 +172,7 @@ src/
 ├── workspace/          # init, workspace state, .qavor/ + ~/.cache/qavor management
 ├── git/                # git wrapper (execa + simple-git for reads), per-repo verbs
 ├── env/                # layered env composer, .env parsing, interpolation, provenance
-├── prepare/            # runtime.*.prepare execution, lockfile-hash skip cache
+├── prepare/            # runtime.*.prepare execution
 ├── supervisor/
 │   ├── native.ts       # native process supervisor
 │   └── compose.ts      # docker compose generator + driver (post-MVP for services)
