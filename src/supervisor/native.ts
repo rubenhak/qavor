@@ -3,6 +3,7 @@ import path from 'node:path';
 import { type Options as ExecaOptions, execa, type ResultPromise } from 'execa';
 import { assertNoIssues, composeServiceEnv, toEnvObject } from '../env/composer.js';
 import type { LoadedDocument } from '../manifest/loader.js';
+import { normalizeSteps } from '../manifest/steps.js';
 import type { ServiceManifest } from '../manifest/types/index.js';
 import { RuntimeFailure, UserError } from '../util/exit-codes.js';
 import { ensureDir } from '../util/fs.js';
@@ -37,12 +38,20 @@ const LOG_MAX_BYTES = 5 * 1024 * 1024;
 const LOG_BACKLOG = 5;
 
 export async function startNativeService(opts: StartOptions): Promise<StartResult> {
-  const cmd = opts.service.runtime?.native?.run?.cmd;
-  if (!cmd) {
+  const runSteps = normalizeSteps(opts.service.runtime?.native?.run);
+  if (runSteps.length > 1) {
+    throw new UserError(
+      `Service '${opts.service.name}' declares ${runSteps.length} run steps. ` +
+        'runtime.native.run takes a single command — it supervises one long-lived process.',
+    );
+  }
+  const runStep = runSteps[0];
+  if (!runStep) {
     throw new UserError(
       `Service '${opts.service.name}' has no runtime.native.run.cmd. Cannot start in native mode.`,
     );
   }
+  const cmd = runStep.cmd;
   if (opts.service.runtime?.native?.enabled === false) {
     throw new UserError(
       `Service '${opts.service.name}' has runtime.native.enabled: false. Cannot start in native mode.`,
@@ -55,9 +64,7 @@ export async function startNativeService(opts: StartOptions): Promise<StartResul
   }
 
   const manifestDir = path.dirname(opts.serviceDoc.file);
-  const cwd = opts.service.runtime?.native?.run?.cwd
-    ? path.resolve(manifestDir, opts.service.runtime.native.run.cwd)
-    : manifestDir;
+  const cwd = runStep.cwd ? path.resolve(manifestDir, runStep.cwd) : manifestDir;
 
   const envRes = await composeServiceEnv({
     mode: 'native',
@@ -85,7 +92,7 @@ export async function startNativeService(opts: StartOptions): Promise<StartResul
   });
 
   let child: ResultPromise;
-  const shell = opts.service.runtime?.native?.run?.shell ?? '/bin/sh';
+  const shell = runStep.shell ?? '/bin/sh';
   try {
     const spawnOpts: ExecaOptions = {
       cwd,

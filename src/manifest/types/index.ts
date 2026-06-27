@@ -15,6 +15,7 @@ export type {
   RuntimeBlock,
   RuntimeBackend,
   RuntimeStep,
+  RuntimeStepOrList,
 } from './generated.js';
 
 /**

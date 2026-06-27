@@ -4,6 +4,7 @@ import type { Command } from 'commander';
 import { execa } from 'execa';
 import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
 import { type LoadedDocument, loadManifestFile } from '../../manifest/loader.js';
+import { normalizeSteps } from '../../manifest/steps.js';
 import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
 import { formatIssue } from '../../manifest/validator.js';
 import { resolveJobs } from '../../util/concurrency.js';
@@ -146,8 +147,8 @@ export function registerDoctor(program: Command): void {
         for (const entry of registry.entries) {
           if (entry.kind !== 'service') continue;
           const svc = entry.data as unknown as ServiceManifest;
-          const checkCmd = svc.runtime?.native?.check_installed?.cmd;
-          if (!checkCmd) {
+          const checkSteps = normalizeSteps(svc.runtime?.native?.check_installed);
+          if (checkSteps.length === 0) {
             checks.push({
               name: `service ${entry.name}: check_installed`,
               status: 'warn',
@@ -157,18 +158,27 @@ export function registerDoctor(program: Command): void {
           }
           const docs = await loadManifestFile(entry.file);
           const serviceDoc = docs[entry.docIndex] as LoadedDocument;
-          const cwd = svc.runtime?.native?.check_installed?.cwd
-            ? path.resolve(path.dirname(serviceDoc.file), svc.runtime.native.check_installed.cwd)
-            : path.dirname(serviceDoc.file);
-          const res = await runShell(checkCmd, cwd);
-          if (res.ok) {
+          const manifestDir = path.dirname(serviceDoc.file);
+          // All steps must pass; the first non-zero exit is the failure.
+          let failure: { exitCode: number; index: number } | undefined;
+          for (const [index, step] of checkSteps.entries()) {
+            const cwd = step.cwd ? path.resolve(manifestDir, step.cwd) : manifestDir;
+            const res = await runShell(step.cmd, cwd);
+            if (!res.ok) {
+              failure = { exitCode: res.exitCode, index };
+              break;
+            }
+          }
+          if (!failure) {
             checks.push({ name: `service ${entry.name}: check_installed`, status: 'ok' });
           } else {
-            const installHint = svc.runtime?.native?.install?.cmd;
+            const installHint = normalizeSteps(svc.runtime?.native?.install)[0]?.cmd;
+            const stepLabel =
+              checkSteps.length > 1 ? ` (step ${failure.index + 1}/${checkSteps.length})` : '';
             const failCheck: Check = {
               name: `service ${entry.name}: check_installed`,
               status: 'fail',
-              message: `exit ${res.exitCode}`,
+              message: `exit ${failure.exitCode}${stepLabel}`,
             };
             if (installHint) failCheck.hint = `Hint: \`${installHint}\``;
             checks.push(failCheck);

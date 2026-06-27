@@ -2,6 +2,7 @@ import path from 'node:path';
 import { type Options as ExecaOptions, execa } from 'execa';
 import { assertNoIssues, composeServiceEnv, toEnvObject } from '../env/composer.js';
 import type { LoadedDocument } from '../manifest/loader.js';
+import { normalizeSteps } from '../manifest/steps.js';
 import type { ServiceManifest } from '../manifest/types/index.js';
 import { ManifestError, RuntimeFailure } from '../util/exit-codes.js';
 import { runHooks } from '../util/hooks.js';
@@ -32,8 +33,8 @@ export interface PrepareResult {
  * unconditionally every time — no hashing, caching, or skip logic.
  */
 export async function prepareService(input: PrepareInput): Promise<PrepareResult> {
-  const cmd = input.service.runtime?.native?.prepare?.cmd;
-  if (!cmd) {
+  const steps = normalizeSteps(input.service.runtime?.native?.prepare);
+  if (steps.length === 0) {
     return {
       serviceName: input.service.name,
       status: 'no-prepare-cmd',
@@ -61,36 +62,42 @@ export async function prepareService(input: PrepareInput): Promise<PrepareResult
     ...(input.signal ? { signal: input.signal } : {}),
   });
 
-  input.logger.info({ service: input.service.name, cmd }, 'prepare: starting');
-
-  const cwd = input.service.runtime?.native?.prepare?.cwd
-    ? path.resolve(manifestDir, input.service.runtime.native.prepare.cwd)
-    : manifestDir;
-
   // The prepare command's raw stdout/stderr pass straight through to the
   // terminal only under --verbose AND serial execution; in parallel the output
   // would interleave unreadably, so it is discarded. No log file either way.
   const stream = (input.verbose ?? false) && (input.serial ?? false);
-  const shell = input.service.runtime?.native?.prepare?.shell ?? '/bin/sh';
-  const opts: ExecaOptions = {
-    cwd,
-    env: { ...process.env, ...env },
-    stdio: stream ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'ignore', 'ignore'],
-    ...(input.signal ? { cancelSignal: input.signal } : {}),
-    reject: false,
-  };
-  try {
-    const res = await execa(shell, ['-c', cmd], opts);
-    if (res.exitCode !== 0) {
-      throw new RuntimeFailure(
-        `prepare failed for ${input.service.name} (exit ${res.exitCode}).` +
-          (stream ? '' : ' Re-run with --serial --verbose to see the command output.'),
-      );
+
+  // Steps run in declaration order; the first non-zero exit aborts the rest.
+  // Each step carries its own cwd/shell.
+  for (const [index, step] of steps.entries()) {
+    const stepLabel = steps.length > 1 ? ` (step ${index + 1}/${steps.length})` : '';
+    input.logger.info(
+      { service: input.service.name, cmd: step.cmd, step: index + 1, steps: steps.length },
+      'prepare: starting',
+    );
+
+    const cwd = step.cwd ? path.resolve(manifestDir, step.cwd) : manifestDir;
+    const shell = step.shell ?? '/bin/sh';
+    const opts: ExecaOptions = {
+      cwd,
+      env: { ...process.env, ...env },
+      stdio: stream ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'ignore', 'ignore'],
+      ...(input.signal ? { cancelSignal: input.signal } : {}),
+      reject: false,
+    };
+    try {
+      const res = await execa(shell, ['-c', step.cmd], opts);
+      if (res.exitCode !== 0) {
+        throw new RuntimeFailure(
+          `prepare failed for ${input.service.name}${stepLabel} (exit ${res.exitCode}).` +
+            (stream ? '' : ' Re-run with --serial --verbose to see the command output.'),
+        );
+      }
+    } catch (err) {
+      if (err instanceof RuntimeFailure) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new RuntimeFailure(`prepare failed for ${input.service.name}${stepLabel}: ${message}.`);
     }
-  } catch (err) {
-    if (err instanceof RuntimeFailure) throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    throw new RuntimeFailure(`prepare failed for ${input.service.name}: ${message}.`);
   }
 
   await runHooks({

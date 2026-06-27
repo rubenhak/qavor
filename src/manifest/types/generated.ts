@@ -42,6 +42,10 @@ export type ProjectRepoEntry = {
   optional?: boolean;
 };
 /**
+ * A runtime step value: either a single step object, or a list of step objects run in sequence. Each list entry is a full step (its own `cmd`/`cwd`/`env`/`shell`); steps run in declaration order and the first non-zero exit aborts the rest. The single-object form (`prepare: { cmd: "…" }`) and the list form (`prepare: [{ cmd: "…" }, { cmd: "…" }]`) are interchangeable. `run` accepts only a single step.
+ */
+export type RuntimeStepOrList = RuntimeStep | [RuntimeStep, ...RuntimeStep[]];
+/**
  * Scalar value usable on the right-hand side of an env entry. Strings support ${VAR} and ${secret:NAME} interpolation.
  */
 export type EnvScalar = string | number | boolean;
@@ -167,15 +171,15 @@ export interface RuntimeBlock {
   'docker-compose'?: RuntimeBackend;
 }
 /**
- * Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `update_libraries`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run. `update_libraries` is an out-of-band maintenance step (e.g. `pnpm update`, `uv lock --upgrade`) run on demand by `qavor update-libraries`, never as part of the start lifecycle.
+ * Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `update_libraries`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run. Each accepts a single step or a list of steps run in sequence (`run` excepted — it takes a single step). `update_libraries` is an out-of-band maintenance step (e.g. `pnpm update`, `uv lock --upgrade`) run on demand by `qavor update-libraries`, never as part of the start lifecycle.
  */
 export interface RuntimeBackend {
   enabled?: boolean;
-  check_installed?: RuntimeStep;
-  install?: RuntimeStep;
-  prepare?: RuntimeStep;
-  update_libraries?: RuntimeStep;
-  run?: RuntimeStep;
+  check_installed?: RuntimeStepOrList;
+  install?: RuntimeStepOrList;
+  prepare?: RuntimeStepOrList;
+  update_libraries?: RuntimeStepOrList;
+  run?: RuntimeStepOrList;
 }
 /**
  * Single shell step in a runtime block (check_installed, install, prepare, update_libraries, run).

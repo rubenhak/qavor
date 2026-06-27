@@ -125,9 +125,13 @@ runtime:
     # command prepare when starting natively
     prepare:
       cmd: "uv sync --all-extras"
-    # out-of-band maintenance step run by `qavor update-libraries` (never on start)
+    # out-of-band maintenance step run by `qavor update-libraries` (never on start).
+    # any step may also be written as a list of commands run in sequence — each
+    # entry is a full step (own cmd/cwd/env/shell) and the first non-zero exit
+    # aborts the rest. (`run` is the exception: it takes a single command.)
     update_libraries:
-      cmd: "uv lock --upgrade && uv sync --all-extras"
+      - cmd: "uv lock --upgrade"
+      - cmd: "uv sync --all-extras"
     # command run when starting natively
     run:
       cmd: "uv run uvicorn app.main:app --port ${PORT}"
@@ -311,9 +315,13 @@ runtime:
     # command prepare when starting natively
     prepare:
       cmd: "uv sync --all-extras"
-    # out-of-band maintenance step run by `qavor update-libraries` (never on start)
+    # out-of-band maintenance step run by `qavor update-libraries` (never on start).
+    # any step may also be written as a list of commands run in sequence — each
+    # entry is a full step (own cmd/cwd/env/shell) and the first non-zero exit
+    # aborts the rest. (`run` is the exception: it takes a single command.)
     update_libraries:
-      cmd: "uv lock --upgrade && uv sync --all-extras"
+      - cmd: "uv lock --upgrade"
+      - cmd: "uv sync --all-extras"
     # command run when starting natively
     run:
       cmd: "uv run uvicorn app.main:app --port ${PORT}"

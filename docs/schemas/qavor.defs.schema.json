@@ -78,17 +78,28 @@
         }
       }
     },
+    "runtimeStepOrList": {
+      "description": "A runtime step value: either a single step object, or a list of step objects run in sequence. Each list entry is a full step (its own `cmd`/`cwd`/`env`/`shell`); steps run in declaration order and the first non-zero exit aborts the rest. The single-object form (`prepare: { cmd: \"…\" }`) and the list form (`prepare: [{ cmd: \"…\" }, { cmd: \"…\" }]`) are interchangeable. `run` accepts only a single step.",
+      "oneOf": [
+        { "$ref": "#/$defs/runtimeStep" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/runtimeStep" },
+          "minItems": 1
+        }
+      ]
+    },
     "runtimeBackend": {
-      "description": "Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `update_libraries`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run. `update_libraries` is an out-of-band maintenance step (e.g. `pnpm update`, `uv lock --upgrade`) run on demand by `qavor update-libraries`, never as part of the start lifecycle.",
+      "description": "Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `update_libraries`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run. Each accepts a single step or a list of steps run in sequence (`run` excepted — it takes a single step). `update_libraries` is an out-of-band maintenance step (e.g. `pnpm update`, `uv lock --upgrade`) run on demand by `qavor update-libraries`, never as part of the start lifecycle.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "enabled": { "type": "boolean", "default": false },
-        "check_installed": { "$ref": "#/$defs/runtimeStep" },
-        "install": { "$ref": "#/$defs/runtimeStep" },
-        "prepare": { "$ref": "#/$defs/runtimeStep" },
-        "update_libraries": { "$ref": "#/$defs/runtimeStep" },
-        "run": { "$ref": "#/$defs/runtimeStep" }
+        "check_installed": { "$ref": "#/$defs/runtimeStepOrList" },
+        "install": { "$ref": "#/$defs/runtimeStepOrList" },
+        "prepare": { "$ref": "#/$defs/runtimeStepOrList" },
+        "update_libraries": { "$ref": "#/$defs/runtimeStepOrList" },
+        "run": { "$ref": "#/$defs/runtimeStepOrList" }
       }
     },
     "runtimeBlock": {

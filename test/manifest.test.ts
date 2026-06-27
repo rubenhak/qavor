@@ -109,6 +109,74 @@ test('loader: multi-document YAML returns one doc per document', async () => {
   }
 });
 
+test('validator: list-form runtime step (multiple commands) passes', async () => {
+  const dir = await makeTempDir();
+  try {
+    const file = await writeYaml(
+      dir,
+      'qavor.yaml',
+      [
+        'kind: service',
+        'name: multi',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    prepare:',
+        '      - cmd: "echo one"',
+        '      - cmd: "echo two"',
+        '        cwd: sub',
+        '    run:',
+        '      cmd: "echo run"',
+        '',
+      ].join('\n'),
+    );
+    const docs = await loadManifestFile(file);
+    assert.equal(validateDocument(docs[0]!).ok, true);
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test('validator: empty list-form step and item missing cmd are rejected', async () => {
+  const dir = await makeTempDir();
+  try {
+    const emptyFile = await writeYaml(
+      dir,
+      'empty.yaml',
+      [
+        'kind: service',
+        'name: emptylist',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    prepare: []', // minItems: 1 — must fail
+        '',
+      ].join('\n'),
+    );
+    const emptyDocs = await loadManifestFile(emptyFile);
+    assert.equal(validateDocument(emptyDocs[0]!).ok, false, 'empty list should be rejected');
+
+    const noCmdFile = await writeYaml(
+      dir,
+      'nocmd.yaml',
+      [
+        'kind: service',
+        'name: nocmd',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    prepare:',
+        '      - cwd: sub', // missing required `cmd`
+        '',
+      ].join('\n'),
+    );
+    const noCmdDocs = await loadManifestFile(noCmdFile);
+    assert.equal(validateDocument(noCmdDocs[0]!).ok, false, 'list item without cmd should fail');
+  } finally {
+    await cleanup(dir);
+  }
+});
+
 test('discoverManifestFiles: finds nested manifests up to MAX_DEPTH (5)', async () => {
   const dir = await makeTempDir();
   try {
