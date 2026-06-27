@@ -76,6 +76,18 @@ async function buildWrapper(): Promise<JSONSchema> {
   const wrapperDefs: Record<string, unknown> = { ...sharedDefs };
   const refMap = new Map<string, string>();
 
+  // `runtimeBackend.additionalProperties` is an open `runtimeStepOrList` schema
+  // so Ajv validates the shape of every user-defined command (prepare, lint, …)
+  // with file:line diagnostics. For *type* generation we strip it to `false`:
+  // an open additionalProperties would emit a `[k: string]: RuntimeStepOrList`
+  // index signature that conflicts with the boolean `enabled` (TS2411). Dynamic
+  // commands are read off the manifest via a typed accessor instead, so the
+  // generated `RuntimeBackend` only needs the reserved lifecycle keys.
+  const backend = wrapperDefs.runtimeBackend;
+  if (backend && typeof backend === 'object') {
+    (backend as Record<string, unknown>).additionalProperties = false;
+  }
+
   for (const kind of KINDS) {
     const schema = await loadSchema(kind.file);
     const typeName = `${kind.id}Manifest`;

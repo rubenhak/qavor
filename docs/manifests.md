@@ -122,17 +122,19 @@ runtime:
     install:
       cmd: |
         echo "UV is not installed. Install it first and try again."
-    # command prepare when starting natively
+    # `prepare` is a user-defined command, not a reserved key. Any key here other
+    # than enabled/check_installed/install/run is a command, discovered and run on
+    # demand as `qavor <key>` (here `qavor prepare`). qavor assumes no fixed set.
     prepare:
       cmd: "uv sync --all-extras"
-    # out-of-band maintenance step run by `qavor update-libraries` (never on start).
-    # any step may also be written as a list of commands run in sequence — each
-    # entry is a full step (own cmd/cwd/env/shell) and the first non-zero exit
-    # aborts the rest. (`run` is the exception: it takes a single command.)
+    # another user-defined command — run on demand as `qavor update_libraries`.
+    # any command may be written as a list of steps run in sequence — each entry
+    # is a full step (own cmd/cwd/env/shell) and the first non-zero exit aborts
+    # the rest. (`run` is the exception: it takes a single command.)
     update_libraries:
       - cmd: "uv lock --upgrade"
       - cmd: "uv sync --all-extras"
-    # command run when starting natively
+    # `run` is reserved: the long-lived process started by `qavor up`.
     run:
       cmd: "uv run uvicorn app.main:app --port ${PORT}"
   docker:
@@ -312,17 +314,19 @@ runtime:
     install:
       cmd: |
         echo "UV is not installed. Install it first and try again."
-    # command prepare when starting natively
+    # `prepare` is a user-defined command, not a reserved key. Any key here other
+    # than enabled/check_installed/install/run is a command, discovered and run on
+    # demand as `qavor <key>` (here `qavor prepare`). qavor assumes no fixed set.
     prepare:
       cmd: "uv sync --all-extras"
-    # out-of-band maintenance step run by `qavor update-libraries` (never on start).
-    # any step may also be written as a list of commands run in sequence — each
-    # entry is a full step (own cmd/cwd/env/shell) and the first non-zero exit
-    # aborts the rest. (`run` is the exception: it takes a single command.)
+    # another user-defined command — run on demand as `qavor update_libraries`.
+    # any command may be written as a list of steps run in sequence — each entry
+    # is a full step (own cmd/cwd/env/shell) and the first non-zero exit aborts
+    # the rest. (`run` is the exception: it takes a single command.)
     update_libraries:
       - cmd: "uv lock --upgrade"
       - cmd: "uv sync --all-extras"
-    # command run when starting natively
+    # `run` is reserved: the long-lived process started by `qavor up`.
     run:
       cmd: "uv run uvicorn app.main:app --port ${PORT}"
   docker:

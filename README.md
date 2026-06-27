@@ -56,8 +56,9 @@ qavor init <project-repo-url-or-path>   # writes the workspaces pointer + .qavor
 qavor doctor                            # verify toolchains, check_installed cmds
 qavor git clone                         # clone every repo from the project manifest
 qavor git status                        # aggregated repo state across all clones
-qavor prepare                           # run runtime.native.prepare for every service
-qavor update-libraries                  # run runtime.native.update_libraries for every service
+qavor commands                          # list manifest-defined commands across the workspace
+qavor prepare                           # run runtime.native.prepare for services that declare it
+qavor update_libraries                  # any manifest command is runnable as `qavor <command>`
 qavor env auth                          # resolved env with provenance
 qavor up auth                           # spawn the service under qavor's supervisor
 qavor logs auth -f                      # tail rotated logs from .qavor/logs/auth/

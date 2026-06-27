@@ -112,13 +112,13 @@ For each category below: items already in the original brief are marked **(exist
 ### 5.2 Repo Preparation (dependencies)
 
 - (existing) Prepare node / python / uv dependencies
-- (new) **Per-runtime steps in the manifest** — `runtime.<backend>.{ check_installed, install, prepare, run }`. The `prepare` step encapsulates whatever the language toolchain needs (`uv sync`, `pnpm install --frozen-lockfile`, `cargo fetch`, …).
+- (new) **Per-runtime steps in the manifest** — reserved lifecycle keys `runtime.<backend>.{ check_installed, install, run }` plus any number of **user-defined commands** (e.g. `prepare`, `update_libraries`, `lint`). Each command is discovered and run on demand as `qavor <command>`; qavor assumes no fixed command set. A typical `prepare` command encapsulates whatever the language toolchain needs (`uv sync`, `pnpm install --frozen-lockfile`, `cargo fetch`, …).
 - (new) **Profiles for reuse** — common prepare/run recipes (e.g. `python_application`, `node_application`) live in profile manifests and are referenced by services.
 - (new) **Toolchain version management** — detect & delegate to `mise`/`asdf` if present; otherwise warn through `qavor doctor`.
 - (new) **Lockfile-aware skip** — hash declared lockfile inputs to skip `prepare` when unchanged (massive ergonomic win).
 - (new) **Code generation step** — model as a profile or a `prepare` step that runs `buf generate`, OpenAPI generators, etc., before `run`.
 - (new) **Pre-flight check** — `qavor doctor` verifies required tools, versions, container runtime, disk space, and runs each runtime backend's `check_installed`.
-- (new) **Custom hook scripts** — `pre_prepare` / `post_prepare` on the `hooks:` block.
+- (new) **Custom hook scripts** — `pre_command` / `post_command` on the `hooks:` block, fired around every `qavor <command>` run with `QAVOR_COMMAND` set.
 - (new) **Parallel prepare across repos** with shared progress.
 
 ### 5.3 Backing Services (stateful dependencies)
@@ -349,7 +349,7 @@ env:
 
 - `qavor init <project-repo-url-or-path>`, `qavor workspace ...`
 - `qavor git clone | sync | status | commit | push | branch | pr` (all accept selectors)
-- `qavor prepare`, `qavor doctor`
+- `qavor <command>` (any manifest-defined runtime command, e.g. `qavor prepare`, `qavor update_libraries`), `qavor commands` (list them), `qavor doctor`
 - `qavor up`, `qavor down`, `qavor restart`, `qavor logs`, `qavor ps`
 - `qavor build`, `qavor run`
 - `qavor backing up|down|reset|snapshot|restore` (backing services)

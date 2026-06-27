@@ -171,18 +171,16 @@ export interface RuntimeBlock {
   'docker-compose'?: RuntimeBackend;
 }
 /**
- * Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `update_libraries`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run. Each accepts a single step or a list of steps run in sequence (`run` excepted — it takes a single step). `update_libraries` is an out-of-band maintenance step (e.g. `pnpm update`, `uv lock --upgrade`) run on demand by `qavor update-libraries`, never as part of the start lifecycle.
+ * Runtime backend definition. A small set of keys is reserved for the start lifecycle: `enabled` (gate), `check_installed` + `install` (installation — install runs only when check_installed fails), and `run` (the long-lived process started by `qavor up`; `run` takes a single step). Every *other* key is a user-defined command — a named shell step (or list of steps) discovered and run on demand by `qavor <command>` (e.g. `prepare`, `update_libraries`, `lint`, `test`, `migrate`). qavor assumes no fixed command set: any command declared here is runnable, fanned out across the services that define it. Each command accepts a single step or a list of steps run in declaration order; the first non-zero exit aborts the rest.
  */
 export interface RuntimeBackend {
   enabled?: boolean;
   check_installed?: RuntimeStepOrList;
   install?: RuntimeStepOrList;
-  prepare?: RuntimeStepOrList;
-  update_libraries?: RuntimeStepOrList;
   run?: RuntimeStepOrList;
 }
 /**
- * Single shell step in a runtime block (check_installed, install, prepare, update_libraries, run).
+ * Single shell step in a runtime backend entry (`run`, `check_installed`, `install`, or any user-defined command such as `prepare`).
  */
 export interface RuntimeStep {
   /**
@@ -231,15 +229,13 @@ export interface EnvBlock {
   publish?: EnvMap;
 }
 /**
- * Lifecycle hooks. Each hook list runs in the manifest's directory at the corresponding lifecycle event.
+ * Lifecycle hooks. Each hook list runs in the manifest's directory at the corresponding lifecycle event. `pre_command`/`post_command` fire around every user-defined `qavor <command>` run; the running command name is exposed to the hook script via the `QAVOR_COMMAND` environment variable so a single hook pair can branch per command.
  */
 export interface Hooks {
   pre_clone?: HookCommands;
   post_clone?: HookCommands;
-  pre_prepare?: HookCommands;
-  post_prepare?: HookCommands;
-  pre_update_libraries?: HookCommands;
-  post_update_libraries?: HookCommands;
+  pre_command?: HookCommands;
+  post_command?: HookCommands;
   pre_run?: HookCommands;
   post_run?: HookCommands;
   pre_stop?: HookCommands;

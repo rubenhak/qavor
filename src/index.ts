@@ -2,23 +2,26 @@ import process from 'node:process';
 import { Command } from 'commander';
 import { registerDiscover } from './cli/commands/discover.js';
 import { registerDoctor } from './cli/commands/doctor.js';
+import { registerCommandsList, registerDynamicCommands } from './cli/commands/dynamic.js';
 import { registerEnv } from './cli/commands/env.js';
 import { registerGitCommands } from './cli/commands/git.js';
 import { registerInit } from './cli/commands/init.js';
 import { registerManifests } from './cli/commands/manifests.js';
-import { registerPrepare } from './cli/commands/prepare.js';
 import { registerResolveEnv } from './cli/commands/resolve-env.js';
 import { registerResolveManifest } from './cli/commands/resolve-manifest.js';
 import { registerRunCommands } from './cli/commands/run.js';
-import { registerUpdateLibraries } from './cli/commands/update-libraries.js';
 import { registerValidate } from './cli/commands/validate.js';
 import { registerWorkspace } from './cli/commands/workspace.js';
+import { loadServicesContext } from './cli/services-context.js';
+import { STATIC_COMMAND_NAMES } from './cli/static-commands.js';
+import { serviceCommandNames } from './manifest/runtime.js';
+import type { ServiceManifest } from './manifest/types/index.js';
 import { ExitCode, QavorError } from './util/exit-codes.js';
 import { configureLogger, getLogger } from './util/logger.js';
 
 const PKG_VERSION = '0.1.0';
 
-function buildProgram(): Command {
+function buildProgram(dynamicCommands: readonly string[]): Command {
   const program = new Command();
   program
     .name('qavor')
@@ -51,18 +54,63 @@ function buildProgram(): Command {
   registerManifests(program);
   registerValidate(program);
   registerGitCommands(program);
-  registerPrepare(program);
-  registerUpdateLibraries(program);
   registerEnv(program);
   registerResolveEnv(program);
   registerResolveManifest(program);
   registerRunCommands(program);
   registerDoctor(program);
+  registerCommandsList(program);
+  // Manifest-defined commands (prepare, update_libraries, lint, …) are discovered
+  // at startup and registered last so a built-in always wins a name collision.
+  registerDynamicCommands(program, dynamicCommands);
   return program;
 }
 
+const VALUE_FLAGS = new Set(['-c', '--config', '-j', '--jobs']);
+
+/** The first non-flag token in argv, i.e. the intended subcommand. */
+function firstSubcommand(argv: string[]): string | undefined {
+  const args = argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === undefined) continue;
+    if (VALUE_FLAGS.has(a)) {
+      i++; // skip the flag's value
+      continue;
+    }
+    if (a.startsWith('-')) continue;
+    return a;
+  }
+  return undefined;
+}
+
+/**
+ * Discover the dynamic command names declared in the current workspace so they
+ * can be registered as `qavor <command>` subcommands. Skipped (returns `[]`)
+ * when the invoked subcommand is plainly a built-in, so the common path pays no
+ * registry-build cost. Any failure (no workspace, unreadable manifests) falls
+ * back to the static surface; the command's own action reports real errors.
+ */
+async function discoverCommandNames(argv: string[]): Promise<string[]> {
+  const sub = firstSubcommand(argv);
+  if (sub !== undefined && sub !== 'help' && STATIC_COMMAND_NAMES.has(sub)) return [];
+  try {
+    const ctx = await loadServicesContext();
+    const names = new Set<string>();
+    for (const entry of ctx.services) {
+      for (const name of serviceCommandNames(entry.data as unknown as ServiceManifest)) {
+        names.add(name);
+      }
+    }
+    return [...names];
+  } catch {
+    return [];
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
-  const program = buildProgram();
+  const dynamicCommands = await discoverCommandNames(argv);
+  const program = buildProgram(dynamicCommands);
   try {
     await program.parseAsync(argv, { from: 'node' });
     return ExitCode.Ok;

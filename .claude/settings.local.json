@@ -72,7 +72,10 @@
       "Bash(echo \"exit=$?\")",
       "Bash(qavor --json manifests)",
       "Bash(perl -i -pe 's/opts: \\\\{ repo\\\\?: string\\\\[\\\\] \\\\}/opts: { only?: string[] }/g; s/opts: \\\\{ repo\\\\?: string\\\\[\\\\]; showVisibility\\\\?: boolean \\\\}/opts: { only?: string[]; showVisibility?: boolean }/g; s/opts: \\\\{ repo\\\\?: string\\\\[\\\\]; message\\\\?: string; allowEmpty\\\\?: boolean; verify\\\\?: boolean \\\\}/opts: { only?: string[]; message?: string; allowEmpty?: boolean; verify?: boolean }/g' src/cli/commands/git.ts)",
-      "Bash(git restore *)"
+      "Bash(git restore *)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"GATE_EXIT=$?\")",
+      "Bash(echo \"=== exit $? ===\")"
     ]
   }
 }

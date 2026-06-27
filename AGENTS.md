@@ -172,7 +172,7 @@ src/
 ├── workspace/          # init, workspace state, .qavor/ + ~/.cache/qavor management
 ├── git/                # git wrapper (execa + simple-git for reads), per-repo verbs
 ├── env/                # layered env composer, .env parsing, interpolation, provenance
-├── prepare/            # runtime.*.prepare execution
+├── command/            # generic dynamic-command runner (runtime.native.<command>)
 ├── supervisor/
 │   ├── native.ts       # native process supervisor
 │   └── compose.ts      # docker compose generator + driver (post-MVP for services)
@@ -193,7 +193,8 @@ Keep files small and single-purpose. Don't introduce framework-style abstraction
 
 **In MVP (v0):**
 - Workstreams A–J in `docs/mvp-tasks.md`.
-- `qavor init`, `qavor doctor`, `qavor clone`, `qavor sync`, `qavor status`, `qavor commit`, `qavor push`, `qavor prepare`, `qavor up <service>`, `qavor down <service>`, `qavor logs <service>`, `qavor ps`, `qavor env <service>`, `qavor validate`, `qavor workspace info`.
+- `qavor init`, `qavor doctor`, `qavor clone`, `qavor sync`, `qavor status`, `qavor commit`, `qavor push`, `qavor up <service>`, `qavor down <service>`, `qavor logs <service>`, `qavor ps`, `qavor env <service>`, `qavor validate`, `qavor workspace info`.
+- **Dynamic commands.** A runtime backend's keys other than the reserved `enabled` / `check_installed` / `install` / `run` are user-defined commands (`prepare`, `update_libraries`, `lint`, …). qavor discovers them across the workspace at startup and registers one `qavor <command>` subcommand each, fanning the command out over the services that declare it (`runtime.native.<command>`). `qavor commands` lists them. No command set is hard-coded; the runner lives in `src/command/` and the registration in `src/cli/commands/dynamic.ts`. The `pre_command` / `post_command` hooks fire around each run with `QAVOR_COMMAND` set.
 - Native mode only. One service per `qavor up` invocation. No graph orchestration yet.
 - `--repo <name>` and "all repos" forms only — no `--group` / `--tag` / state filters in MVP.
 - `kind: profile` resolution and chaining: profiles are flattened into each manifest's `runtime`/`mode`/`env` at registry-build time and consumed by every command. See §6.

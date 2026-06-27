@@ -28,11 +28,12 @@ test('qavor prepare: runs prepare cmd unconditionally every run', async () => {
     const second = await runCli(['prepare', '--json'], { cwd: ws });
     assert.equal(second.exitCode, 0, `prepare failed: ${second.stderr}`);
     const secondParsed = JSON.parse(second.stdout);
+    assert.equal(secondParsed.command, 'prepare');
     assert.ok(
       secondParsed.results.every(
-        (r: { status: string }) => r.status === 'ok' || r.status === 'no-prepare-cmd',
+        (r: { status: string }) => r.status === 'ok' || r.status === 'skipped',
       ),
-      `expected no skip on second run; got ${JSON.stringify(secondParsed.results)}`,
+      `expected no failure on second run; got ${JSON.stringify(secondParsed.results)}`,
     );
   } finally {
     await cleanup(fixtures.base);

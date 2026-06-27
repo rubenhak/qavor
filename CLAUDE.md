@@ -52,13 +52,13 @@ All YAML documents carry a top-level `kind:` field that dispatches to its JSON S
 
 ```
 src/
-├── cli/            # Commander setup, command handlers (init, git, prepare, env, run, etc.)
+├── cli/            # Commander setup, command handlers (init, git, env, run, dynamic, etc.)
 ├── manifest/       # YAML loader (with source-position preservation), Ajv validators, registry
 │   └── types/      # GENERATED — do not edit
 ├── workspace/      # Workspace init, .qavor/ state directory management
 ├── git/            # Git wrapper: execa for mutations, simple-git for read-only inspection
 ├── env/            # Layered env composer with provenance tracking
-├── prepare/        # runtime.*.prepare execution
+├── command/        # generic dynamic-command runner (runtime.native.<command>)
 ├── supervisor/     # native.ts (own supervisor via execa), compose.ts (docker compose driver)
 └── util/           # Concurrency helpers (p-queue/p-limit/p-map), AbortSignal, fs utils
 ```
@@ -70,6 +70,7 @@ src/
 - **Output modes**: human-readable (pino-pretty on TTY) vs. NDJSON (`--json` flag). Logs always on stderr.
 - **Exit codes**: `0` ok · `1` user error · `2` manifest error · `3` runtime error. Defined in `docs/exit-codes.md`.
 - **State directory**: `.qavor/` at workspace root (gitignored) holds PIDs, logs, generated compose files, and cache. Layout in `AGENTS.md §10`.
+- **Dynamic commands**: a runtime backend's non-reserved keys (anything but `enabled`/`check_installed`/`install`/`run`) are user-defined commands. They are discovered from manifests at startup and registered as `qavor <command>` subcommands (`src/cli/commands/dynamic.ts`), each fanning `runtime.native.<command>` out over the services that declare it via the generic runner in `src/command/`. No command set is hard-coded; `qavor commands` lists what's defined.
 
 ### Commit message style
 

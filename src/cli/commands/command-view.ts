@@ -10,23 +10,23 @@ import {
 } from '../live-view.js';
 
 /**
- * Outcome of running a service's `runtime.native.prepare`:
- *   - `ran`  — the prepare command ran and succeeded.
- *   - `skip` — the service declares no prepare command; nothing to do.
- *   - `fail` — the prepare command errored (non-zero exit / spawn failure).
+ * Outcome of running a dynamic command for one service:
+ *   - `ran`  — the command ran and succeeded.
+ *   - `skip` — the service does not declare this command; nothing to do.
+ *   - `fail` — the command errored (non-zero exit / spawn failure).
  */
-export type PrepareOutcome = 'ran' | 'skip' | 'fail';
+export type CommandOutcome = 'ran' | 'skip' | 'fail';
 
-export interface PrepareRow {
+export interface CommandRow {
   service: string;
-  outcome: PrepareOutcome;
-  /** Short status word shown in the STATUS column, e.g. `'prepared'`. */
+  outcome: CommandOutcome;
+  /** Short status word shown in the STATUS column, e.g. `'ok'`. */
   status: string;
   /** Optional detail or error message shown in the trailing column. */
   detail?: string;
 }
 
-export type PrepareView = LiveView<PrepareRow>;
+export type CommandView = LiveView<CommandRow>;
 
 const ICON_W = 1;
 const STATUS_W = 11;
@@ -38,7 +38,7 @@ const COLUMNS: LiveColumn[] = [
   { header: 'DETAIL', width: 'flex' satisfies ColumnWidth },
 ];
 
-function outcomeIcon(outcome: PrepareOutcome, c: Palette, g: Glyphs): string {
+function outcomeIcon(outcome: CommandOutcome, c: Palette, g: Glyphs): string {
   switch (outcome) {
     case 'ran':
       return c.green(g.clean);
@@ -49,7 +49,7 @@ function outcomeIcon(outcome: PrepareOutcome, c: Palette, g: Glyphs): string {
   }
 }
 
-function statusCell(row: PrepareRow, c: Palette): string {
+function statusCell(row: CommandRow, c: Palette): string {
   const text = fit(row.status, STATUS_W);
   switch (row.outcome) {
     case 'ran':
@@ -62,7 +62,7 @@ function statusCell(row: PrepareRow, c: Palette): string {
 }
 
 function resolvedCells(
-  row: PrepareRow,
+  row: CommandRow,
   c: Palette,
   g: Glyphs,
   serviceW: number,
@@ -90,33 +90,41 @@ function pendingCells(
     c.cyan(spinner),
     c.bold(fit(service, serviceW)),
     c.dim(fit('…', STATUS_W)),
-    c.dim(fit('preparing…', detailW)),
+    c.dim(fit('running…', detailW)),
   ];
 }
 
-const renderer: LiveRenderer<PrepareRow> = {
+const renderer: LiveRenderer<CommandRow> = {
   columns: COLUMNS,
-  cells(label: string, row: PrepareRow | null, ctx: RowContext): string[] {
+  cells(label: string, row: CommandRow | null, ctx: RowContext): string[] {
     const serviceW = ctx.layout.widths[1] ?? 0;
     const detailW = ctx.layout.widths[3] ?? 0;
     if (row === null) return pendingCells(label, ctx.spinner, ctx.c, serviceW, detailW);
     return resolvedCells(row, ctx.c, ctx.g, serviceW, detailW);
   },
   summary(rows, c): string[] {
-    const present = rows.filter((r): r is PrepareRow => r !== null);
+    const present = rows.filter((r): r is CommandRow => r !== null);
     const total = present.length;
-    const count = (o: PrepareOutcome): number => present.filter((r) => r.outcome === o).length;
+    const count = (o: CommandOutcome): number => present.filter((r) => r.outcome === o).length;
     const bits = [`${total} service${total === 1 ? '' : 's'}`];
     const ranN = count('ran');
     const skipN = count('skip');
     const failN = count('fail');
-    if (ranN) bits.push(c.green(`${ranN} prepared`));
+    if (ranN) bits.push(c.green(`${ranN} ran`));
     if (skipN) bits.push(c.dim(`${skipN} skipped`));
     if (failN) bits.push(c.red(`${failN} failed`));
     return ['', c.dim('Summary: ') + bits.join(c.dim('  ·  '))];
   },
 };
 
-export function createPrepareView(serviceNames: string[], opts: { enabled: boolean }): PrepareView {
-  return createLiveView(serviceNames, renderer, { enabled: opts.enabled, verb: 'preparing' });
+/**
+ * Live table for a dynamic command run: one row per service. `command` is the
+ * footer verb shown while work is in flight (e.g. `prepare… `).
+ */
+export function createCommandView(
+  command: string,
+  serviceNames: string[],
+  opts: { enabled: boolean },
+): CommandView {
+  return createLiveView(serviceNames, renderer, { enabled: opts.enabled, verb: command });
 }

@@ -6,10 +6,8 @@ import type { Logger } from './logger.js';
 const HOOK_EVENTS = [
   'pre_clone',
   'post_clone',
-  'pre_prepare',
-  'post_prepare',
-  'pre_update_libraries',
-  'post_update_libraries',
+  'pre_command',
+  'post_command',
   'pre_run',
   'post_run',
   'pre_stop',
