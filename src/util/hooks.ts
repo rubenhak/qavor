@@ -8,6 +8,8 @@ const HOOK_EVENTS = [
   'post_clone',
   'pre_prepare',
   'post_prepare',
+  'pre_update_libraries',
+  'post_update_libraries',
   'pre_run',
   'post_run',
   'pre_stop',

@@ -58,7 +58,7 @@
       }
     },
     "runtimeStep": {
-      "description": "Single shell step in a runtime block (check_installed, install, prepare, run).",
+      "description": "Single shell step in a runtime block (check_installed, install, prepare, update_libraries, run).",
       "type": "object",
       "additionalProperties": false,
       "required": ["cmd"],
@@ -79,7 +79,7 @@
       }
     },
     "runtimeBackend": {
-      "description": "Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run.",
+      "description": "Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `update_libraries`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run. `update_libraries` is an out-of-band maintenance step (e.g. `pnpm update`, `uv lock --upgrade`) run on demand by `qavor update-libraries`, never as part of the start lifecycle.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -87,6 +87,7 @@
         "check_installed": { "$ref": "#/$defs/runtimeStep" },
         "install": { "$ref": "#/$defs/runtimeStep" },
         "prepare": { "$ref": "#/$defs/runtimeStep" },
+        "update_libraries": { "$ref": "#/$defs/runtimeStep" },
         "run": { "$ref": "#/$defs/runtimeStep" }
       }
     },
@@ -149,6 +150,8 @@
         "post_clone": { "$ref": "#/$defs/hookCommands" },
         "pre_prepare": { "$ref": "#/$defs/hookCommands" },
         "post_prepare": { "$ref": "#/$defs/hookCommands" },
+        "pre_update_libraries": { "$ref": "#/$defs/hookCommands" },
+        "post_update_libraries": { "$ref": "#/$defs/hookCommands" },
         "pre_run": { "$ref": "#/$defs/hookCommands" },
         "post_run": { "$ref": "#/$defs/hookCommands" },
         "pre_stop": { "$ref": "#/$defs/hookCommands" },

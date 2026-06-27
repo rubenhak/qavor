@@ -57,6 +57,7 @@ qavor doctor                            # verify toolchains, check_installed cmd
 qavor git clone                         # clone every repo from the project manifest
 qavor git status                        # aggregated repo state across all clones
 qavor prepare                           # run runtime.native.prepare for every service
+qavor update-libraries                  # run runtime.native.update_libraries for every service
 qavor env auth                          # resolved env with provenance
 qavor up auth                           # spawn the service under qavor's supervisor
 qavor logs auth -f                      # tail rotated logs from .qavor/logs/auth/

@@ -10,6 +10,7 @@ import { registerPrepare } from './cli/commands/prepare.js';
 import { registerResolveEnv } from './cli/commands/resolve-env.js';
 import { registerResolveManifest } from './cli/commands/resolve-manifest.js';
 import { registerRunCommands } from './cli/commands/run.js';
+import { registerUpdateLibraries } from './cli/commands/update-libraries.js';
 import { registerValidate } from './cli/commands/validate.js';
 import { registerWorkspace } from './cli/commands/workspace.js';
 import { ExitCode, QavorError } from './util/exit-codes.js';
@@ -51,6 +52,7 @@ function buildProgram(): Command {
   registerValidate(program);
   registerGitCommands(program);
   registerPrepare(program);
+  registerUpdateLibraries(program);
   registerEnv(program);
   registerResolveEnv(program);
   registerResolveManifest(program);

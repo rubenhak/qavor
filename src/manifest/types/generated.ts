@@ -167,17 +167,18 @@ export interface RuntimeBlock {
   'docker-compose'?: RuntimeBackend;
 }
 /**
- * Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run.
+ * Runtime backend definition. Each of `check_installed`, `install`, `prepare`, `update_libraries`, `run` is optional but ordered: install runs only when check_installed fails; prepare runs before run. `update_libraries` is an out-of-band maintenance step (e.g. `pnpm update`, `uv lock --upgrade`) run on demand by `qavor update-libraries`, never as part of the start lifecycle.
  */
 export interface RuntimeBackend {
   enabled?: boolean;
   check_installed?: RuntimeStep;
   install?: RuntimeStep;
   prepare?: RuntimeStep;
+  update_libraries?: RuntimeStep;
   run?: RuntimeStep;
 }
 /**
- * Single shell step in a runtime block (check_installed, install, prepare, run).
+ * Single shell step in a runtime block (check_installed, install, prepare, update_libraries, run).
  */
 export interface RuntimeStep {
   /**
@@ -233,6 +234,8 @@ export interface Hooks {
   post_clone?: HookCommands;
   pre_prepare?: HookCommands;
   post_prepare?: HookCommands;
+  pre_update_libraries?: HookCommands;
+  post_update_libraries?: HookCommands;
   pre_run?: HookCommands;
   post_run?: HookCommands;
   pre_stop?: HookCommands;
