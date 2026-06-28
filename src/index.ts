@@ -18,8 +18,7 @@ import { serviceCommandNames } from './manifest/runtime.js';
 import type { ServiceManifest } from './manifest/types/index.js';
 import { ExitCode, QavorError } from './util/exit-codes.js';
 import { configureLogger, getLogger } from './util/logger.js';
-
-const PKG_VERSION = '0.1.0';
+import { version as PKG_VERSION } from '../package.json';
 
 function buildProgram(dynamicCommands: readonly string[]): Command {
   const program = new Command();
