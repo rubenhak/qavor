@@ -1,5 +1,6 @@
 import process from 'node:process';
 import { Command } from 'commander';
+import { version as PKG_VERSION } from '../package.json';
 import { registerDiscover } from './cli/commands/discover.js';
 import { registerDoctor } from './cli/commands/doctor.js';
 import { registerCommandsList, registerDynamicCommands } from './cli/commands/dynamic.js';
@@ -18,7 +19,6 @@ import { serviceCommandNames } from './manifest/runtime.js';
 import type { ServiceManifest } from './manifest/types/index.js';
 import { ExitCode, QavorError } from './util/exit-codes.js';
 import { configureLogger, getLogger } from './util/logger.js';
-import { version as PKG_VERSION } from '../package.json';
 
 function buildProgram(dynamicCommands: readonly string[]): Command {
   const program = new Command();
