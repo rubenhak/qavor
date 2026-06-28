@@ -75,7 +75,14 @@
       "Bash(git restore *)",
       "Bash(npx tsc *)",
       "Bash(echo \"GATE_EXIT=$?\")",
-      "Bash(echo \"=== exit $? ===\")"
+      "Bash(echo \"=== exit $? ===\")",
+      "Bash(xargs cat)",
+      "Bash(grep -rn '\\\\${@}\\\\|positional\\\\|passthrough\\\\|argv\\\\|allowUnknownOption' src/cli/ src/command/)",
+      "Bash(set -e)",
+      "Bash(mkdir -p skills/qavor-commands)",
+      "Bash(mv ~/.claude/skills/qavor-commands/SKILL.md skills/qavor-commands/SKILL.md)",
+      "Bash(rmdir ~/.claude/skills/qavor-commands)",
+      "Bash(ln -s __TRACKED_VAR__/skills/qavor-commands ~/.claude/skills/qavor-commands)"
     ]
   }
 }
