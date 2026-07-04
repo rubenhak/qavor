@@ -77,7 +77,7 @@ export type Requirement1 = {
 export type HookCommands = string | [string, ...string[]];
 
 /**
- * Workspace pointer file. Lives at the root of the workspace directory as `qavor.yaml` and is created automatically by `qavor init`. Its only job is to point at the project repo whose `kind: project` manifest enumerates the rest of the workspace.
+ * Workspace pointer file. Used only by multi-repo workspaces: it lives at the root of the (non-git) workspace directory as `qavor.yaml`, is created automatically by `qavor init`, and its only job is to reference the project repo dir whose `kind: project` manifest enumerates the rest of the workspace. Single-repo (`standalone: true`) projects have no workspaces manifest — the repo is its own workspace.
  */
 export interface WorkspacesManifest {
   kind: 'workspaces';

@@ -80,10 +80,15 @@ only the standalone project; services are discovered by the normal sub-directory
 
 ## Workspaces Manifest
 
-The workspace-level manifest. This file is created dynamically as the part of the
-initial clone and the only purpose is to be point to the 
+**Multi-repo only.** The workspace-level manifest exists solely in a multi-repo
+workspace, where the workspace directory is a plain (non-git) parent dir holding the
+cloned repos. Its only job is to reference the root project repo dir. It is created
+dynamically by `qavor init` (never hand-written) and is the one piece of workspace
+state that lives outside `.qavor/`.
 
-The project repo provides top level de
+A **single-repo (`standalone: true`) project has no workspaces manifest** — the repo is
+its own workspace, so there is nothing to point at. See *Single-repo (standalone)
+projects* above.
 
 ```yaml
 # indicates that the manifest describes the root workspace
