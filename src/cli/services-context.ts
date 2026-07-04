@@ -27,12 +27,20 @@ let cached: Promise<ServicesContext> | null = null;
  * command's own action share a single registry build instead of scanning the
  * workspace twice. A fresh CLI process always starts with an empty cache.
  */
-export function loadServicesContext(opts: { concurrency?: number } = {}): Promise<ServicesContext> {
-  cached ??= build(opts.concurrency);
+export interface ServicesContextOptions {
+  concurrency?: number;
+  /** Resolve remote profile sources from cache only. */
+  offline?: boolean;
+  /** Bypass caches and re-fetch remote profile sources. */
+  refresh?: boolean;
+}
+
+export function loadServicesContext(opts: ServicesContextOptions = {}): Promise<ServicesContext> {
+  cached ??= build(opts);
   return cached;
 }
 
-async function build(concurrency?: number): Promise<ServicesContext> {
+async function build(opts: ServicesContextOptions): Promise<ServicesContext> {
   const ws = await resolveWorkspace();
   const projectDoc = await readProjectManifest(ws.projectManifestFile);
   const allRepos = resolveRepos({
@@ -45,7 +53,9 @@ async function build(concurrency?: number): Promise<ServicesContext> {
   const registry = await buildWorkspaceRegistry({
     workspaceRoot: ws.paths.root,
     repos: repoMap,
-    concurrency: concurrency ?? resolveJobs(undefined),
+    concurrency: opts.concurrency ?? resolveJobs(undefined),
+    offline: opts.offline ?? false,
+    refresh: opts.refresh ?? false,
   });
   const services = registry.entries.filter((e) => e.kind === 'service');
   return { ws, registry, services };

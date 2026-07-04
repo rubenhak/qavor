@@ -4,6 +4,7 @@ import pMap from 'p-map';
 import { isDirectory } from '../util/fs.js';
 import { getLogger } from '../util/logger.js';
 import { type LoadedDocument, loadManifestFile } from './loader.js';
+import { type RemoteProfileOptions, resolveRemoteProfiles } from './remote.js';
 import { resolveManifest } from './resolve.js';
 import type { ManifestKind, Requirement } from './types/index.js';
 import { formatIssue, isKnownKind, type ValidationIssue, validateDocument } from './validator.js';
@@ -99,6 +100,8 @@ export interface RegistryEntry {
   dir: string;
   /** Optional repo name this manifest belongs to. */
   repo?: string;
+  /** For profiles fetched from a remote source, the original source URI. */
+  remoteSource?: string;
   /**
    * The manifest body. Profiles referenced via `profiles:` are flattened in at
    * registry-build time (see {@link resolveProfiles}), so this is the
@@ -128,6 +131,14 @@ export interface DiscoveryOptions {
   concurrency?: number;
   /** When true, manifests with unknown kinds raise issues; otherwise warned. */
   strictUnknownKind?: boolean;
+  /** Use cached copies of remote profile sources only; never hit the network. */
+  offline?: boolean;
+  /** Bypass caches and re-fetch every remote profile source. */
+  refresh?: boolean;
+  /** Cancellation for remote profile fetches. */
+  signal?: AbortSignal;
+  /** Environment used to resolve remote profile `auth.tokenEnv`. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -206,6 +217,19 @@ export async function buildWorkspaceRegistry(opts: DiscoveryOptions): Promise<Wo
     },
     { concurrency: opts.concurrency ?? 8 },
   );
+
+  // Fetch, validate, and register any profiles referenced by remote URL/git,
+  // rewriting those references to bare names so the uniqueness, cross-reference,
+  // and profile-flattening passes below run unchanged. No-op when nothing
+  // declares a remote reference.
+  const remoteOpts: RemoteProfileOptions = {
+    concurrency: opts.concurrency ?? 8,
+    offline: opts.offline ?? false,
+    refresh: opts.refresh ?? false,
+    ...(opts.signal ? { signal: opts.signal } : {}),
+    ...(opts.env ? { env: opts.env } : {}),
+  };
+  await resolveRemoteProfiles(all, issues, remoteOpts);
 
   // Validate workspace-wide uniqueness of names within (service/profile/repo).
   const byName = new Map<string, RegistryEntry>();

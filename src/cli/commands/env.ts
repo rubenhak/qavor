@@ -36,6 +36,8 @@ export function registerEnv(program: Command): void {
         workspaceRoot: ws.paths.root,
         repos: repoMap,
         concurrency: resolveJobs(root.jobs),
+        offline: root.offline,
+        refresh: root.refresh,
       });
       if (reportRegistryIssues(registry.issues)) {
         throw new ManifestError(

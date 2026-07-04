@@ -101,6 +101,8 @@ Cross-repo refs use names (`{ service: token-issuer }`, `{ service: postgres }`)
 
 **Profile resolution happens at registry-build time.** When `buildWorkspaceRegistry` assembles the registry, every entry's `profiles:` chain is flattened into its `runtime`/`mode`/`env` (later profiles and the entry's own values winning; chained profiles supported) and the `profiles:` key is dropped. Every command (`prepare`, `up`, `env`, …) therefore reads the *effective* definition from `entry.data` without re-resolving. The standalone `resolve-manifest` command is purely a debug printer over that already-resolved data. Profile cycles and unknown profile references are reported as manifest issues. Keep the flattening logic in `manifest/resolve.ts` as the single implementation.
 
+**Remote profile sources (ADR-007).** A `profiles:` entry may also be a *remote* source — an https URL, a GitHub URL/shorthand, a git SSH/HTTPS repo ref, or a `file://`/relative path — given either as a string or a long-form object `{ url, ref?, integrity?, auth? }`. A pre-pass in `buildWorkspaceRegistry` (`manifest/remote.ts`) runs *before* uniqueness/cross-reference/flattening: it fetches each unique source (bounded fan-out, `AbortSignal`, using Node's built-in `fetch` and the existing git wrapper — no new dependency), verifies an optional `sha256` pin (fails closed), validates it as `kind: profile`, registers it under its declared name, and rewrites the reference to that name so `manifest/resolve.ts` runs unchanged. Content is cached under `~/.cache/qavor/` (see §10); `--offline` uses cache only, `--refresh` re-fetches. Git sources authenticate via the user's git credential helper / SSH agent; only raw https/GitHub may add a bearer token, gated behind an explicit `auth.tokenEnv`. A workspace declaring no remote reference pays zero network cost. Fetch/git/integrity failures and invalid fetched documents are collected as manifest issues during registry build (fail-closed), reported with the source URI as the `file` — like any unresolvable reference they surface on the exit `2` (manifest error) path.
+
 ---
 
 ## 7. Environment composition (later wins)
@@ -202,6 +204,7 @@ Keep files small and single-purpose. Don't introduce framework-style abstraction
 - Native mode only. One service per `qavor up` invocation. No graph orchestration yet.
 - `--repo <name>` and "all repos" forms only — no `--group` / `--tag` / state filters in MVP.
 - `kind: profile` resolution and chaining: profiles are flattened into each manifest's `runtime`/`mode`/`env` at registry-build time and consumed by every command. See §6.
+- **Remote profile sources (ADR-007):** a `profiles:` entry may reference a profile by URL / git / `file://` source; it is fetched, optionally pinned, cached, and validated at registry-build time, then resolved by name like any local profile. Resolution failures are collected as manifest issues (fail-closed). See §6. This is a scoped extension of profile resolution, not the deferred "remote/team workspaces" item below (which is about the workspace *repo set*).
 
 **Explicitly out of MVP (deferred to v0.5 / v1):**
 - Groups & group selectors; filtered selectors; state filters.

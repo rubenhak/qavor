@@ -70,6 +70,8 @@ export function registerResolveManifest(program: Command): void {
         workspaceRoot: ws.paths.root,
         repos: repoMap,
         concurrency: resolveJobs(root.jobs),
+        offline: root.offline,
+        refresh: root.refresh,
       });
       // Surface manifest issues on stderr but keep going — this command exists to
       // help debug those very issues, so it must not fail closed on them.

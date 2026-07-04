@@ -20,6 +20,7 @@ import { inheritRootOptions } from '../options.js';
 async function findService(
   name: string,
   jobs: number,
+  net: { offline: boolean; refresh: boolean } = { offline: false, refresh: false },
 ): Promise<{
   serviceDoc: LoadedDocument;
   service: ServiceManifest;
@@ -39,6 +40,8 @@ async function findService(
     workspaceRoot: ws.paths.root,
     repos: repoMap,
     concurrency: jobs,
+    offline: net.offline,
+    refresh: net.refresh,
   });
   if (reportRegistryIssues(registry.issues)) {
     throw new ManifestError(
@@ -72,7 +75,7 @@ export function registerRunCommands(program: Command): void {
       }
       const cliEnv = opts.env ? parseCliEnv(opts.env) : undefined;
       const jobs = resolveJobs(root.jobs);
-      const ctx = await findService(name, jobs);
+      const ctx = await findService(name, jobs, { offline: root.offline, refresh: root.refresh });
       const startOpts: Parameters<typeof startNativeService>[0] = {
         paths: ctx.paths,
         serviceDoc: ctx.serviceDoc,
@@ -99,7 +102,7 @@ export function registerRunCommands(program: Command): void {
       const root = inheritRootOptions(cmd);
       const logger = getLogger();
       const jobs = resolveJobs(root.jobs);
-      const ctx = await findService(name, jobs);
+      const ctx = await findService(name, jobs, { offline: root.offline, refresh: root.refresh });
       const graceMs = Number.parseInt(opts.grace, 10);
       const res = await stopNativeService({
         paths: ctx.paths,
@@ -125,7 +128,7 @@ export function registerRunCommands(program: Command): void {
     .action(async (name: string, opts: { follow?: boolean; bytes: string }, cmd: Command) => {
       const root = inheritRootOptions(cmd);
       const jobs = resolveJobs(root.jobs);
-      const ctx = await findService(name, jobs);
+      const ctx = await findService(name, jobs, { offline: root.offline, refresh: root.refresh });
       const logFile = path.join(ctx.paths.logsDir, name, 'service.log');
       const ac = new AbortController();
       process.on('SIGINT', () => ac.abort());
