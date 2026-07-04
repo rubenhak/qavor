@@ -71,6 +71,8 @@ export function registerManifests(program: Command): void {
         workspaceRoot: ws.paths.root,
         repos: repoMap,
         concurrency: jobs,
+        offline: root.offline,
+        refresh: root.refresh,
       });
 
       const repoNodes = await buildRepoNodes({ repoMap, repos, registry, ws });

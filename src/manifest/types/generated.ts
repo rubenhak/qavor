@@ -42,6 +42,18 @@ export type ProjectRepoEntry = {
   optional?: boolean;
 };
 /**
+ * Reference to a profile. Either a bare workspace-local name, a remote source URI (https / GitHub / git SSH or HTTPS / file), or a long-form object carrying the source plus optional pin and auth. Profiles are merged in declaration order; later entries win.
+ */
+export type ProfileRef = Name | ProfileSourceUri | ProfileSource;
+/**
+ * Remote profile source as a single string. Supported forms: an https URL to a YAML profile document; a GitHub blob/raw URL or `github:<owner>/<repo>//<path>[@<ref>]` shorthand; a git repo ref `git@host:owner/repo.git//<path>[@<ref>]` (or `ssh://` / `https://….git//<path>`); or a `file://` path. An optional `#sha256=<64 hex>` fragment pins the fetched content.
+ */
+export type ProfileSourceUri = string;
+/**
+ * Conventional UPPER_SNAKE_CASE environment variable name.
+ */
+export type EnvKey = string;
+/**
  * A runtime step value: either a single step object, or a list of step objects run in sequence. Each list entry is a full step (its own `cmd`/`cwd`/`env`/`shell`); steps run in declaration order and the first non-zero exit aborts the rest. The single-object form (`prepare: { cmd: "…" }`) and the list form (`prepare: [{ cmd: "…" }, { cmd: "…" }]`) are interchangeable. `run` accepts only a single step.
  */
 export type RuntimeStepOrList = RuntimeStep | [RuntimeStep, ...RuntimeStep[]];
@@ -153,7 +165,7 @@ export interface ServiceManifest {
   /**
    * Profiles applied to this service in declaration order. Profile values are layered first; this manifest's own `runtime` and `env` are merged on top.
    */
-  profiles?: Name[];
+  profiles?: ProfileRef[];
   runtime?: RuntimeBlock;
   /**
    * Default run mode for this service. Overridable per invocation via `--mode`. Must match a backend whose `enabled: true` is set on this service or one of its profiles. Backing services typically use `docker-compose`.
@@ -165,6 +177,31 @@ export interface ServiceManifest {
   require?: Requirement[];
   env?: EnvBlock;
   hooks?: Hooks;
+}
+/**
+ * Long-form remote profile reference: a source URL plus optional git ref, integrity pin, expected name, and auth.
+ */
+export interface ProfileSource {
+  name?: Name;
+  /**
+   * Source URI. Same forms as a `profileSourceUri` string (https / GitHub / git / file).
+   */
+  url: string;
+  /**
+   * Git ref (branch, tag, or commit) for git sources. Ignored for plain https/file sources.
+   */
+  ref?: string;
+  /**
+   * Optional Subresource-Integrity-style pin. When present the fetched content's sha256 must match, or resolution fails closed.
+   */
+  integrity?: string;
+  auth?: ProfileAuth;
+}
+/**
+ * Authentication for remote profile sources. Git sources authenticate through the user's git credential helper / SSH agent and need nothing here; https/GitHub sources may set a bearer token.
+ */
+export interface ProfileAuth {
+  tokenEnv?: EnvKey;
 }
 /**
  * Available runtime backends. A service manifest may declare any subset; the active backend is chosen by the resolved `mode`.
@@ -256,7 +293,7 @@ export interface ProfileManifest {
   /**
    * Other profiles this one extends. Resolved in declaration order before this profile's own values are applied.
    */
-  profiles?: Name[];
+  profiles?: ProfileRef[];
   runtime?: RuntimeBlock;
   mode?: 'native' | 'docker' | 'docker-compose';
   env?: EnvBlock;

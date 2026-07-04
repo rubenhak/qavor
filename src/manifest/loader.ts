@@ -56,7 +56,21 @@ export async function loadManifestFile(
     }
     throw err;
   }
+  return parseManifestSource(source, absFile, opts);
+}
 
+/**
+ * Parse already-in-memory YAML manifest text. Used both by
+ * {@link loadManifestFile} (after reading from disk) and by the remote-profile
+ * fetcher, so fetched documents get identical multi-doc parsing and positioned
+ * diagnostics. `label` is what appears as the `file` in every {@link SourcePosition}
+ * (an absolute path for on-disk manifests, or the source URI for remote ones).
+ */
+export function parseManifestSource(
+  source: string,
+  label: string,
+  opts: LoadOptions = {},
+): LoadedDocument[] {
   const docs = parseAllDocuments(source, {
     keepSourceTokens: true,
   });
@@ -69,15 +83,15 @@ export async function loadManifestFile(
     if (doc.errors.length && opts.throwOnParseError !== false) {
       const e = doc.errors[0];
       if (!e) continue;
-      const pos = errorPosition(absFile, source, e);
+      const pos = errorPosition(label, source, e);
       throw new ManifestError(
         `${pos.file}:${pos.line}:${pos.column}: YAML parse error: ${e.message}`,
       );
     }
     const data = (doc.toJS({ maxAliasCount: -1 }) ?? {}) as Record<string, unknown>;
     const kind = typeof data.kind === 'string' ? (data.kind as ManifestKind | string) : undefined;
-    const position = makePositionResolver(absFile, source, doc);
-    out.push({ file: absFile, docIndex: idx, kind, data, position });
+    const position = makePositionResolver(label, source, doc);
+    out.push({ file: label, docIndex: idx, kind, data, position });
     idx++;
   }
   return out;

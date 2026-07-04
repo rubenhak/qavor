@@ -128,6 +128,8 @@ export function registerDoctor(program: Command): void {
           workspaceRoot: ws.paths.root,
           repos: repoMap,
           concurrency: resolveJobs(root.jobs),
+          offline: root.offline,
+          refresh: root.refresh,
         });
 
         // Surface manifest problems (parse, schema, and cross-reference errors)

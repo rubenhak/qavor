@@ -399,6 +399,51 @@ env:
     LOG_LEVEL: info
 ```
 
+### Remote profile references
+
+A `profiles:` entry is normally a bare workspace-local name, but it may also point
+at a **remote source** so teams can share profiles out-of-workspace. Remote
+profiles are fetched, cached, optionally integrity-checked, validated as
+`kind: profile`, and registered under their declared `name` — after which they
+merge exactly like a local profile (declaration order, later wins, chaining
+supported). Resolution happens once at registry-build time; nothing is fetched
+unless a manifest actually declares a remote reference.
+
+Two forms are accepted, and may be mixed freely with bare names:
+
+```yaml
+kind: service
+name: auth
+profiles:
+  - python_application                                   # local, by name
+  - https://cfg.acme.dev/profiles/base.yaml              # https URL (string form)
+  - github:acme/config//profiles/base.yaml@v1.2.0        # GitHub shorthand
+  - git@github.com:acme/config.git//profiles/base.yaml@main   # git over SSH
+  - name: shared_base                                    # long-form object
+    url: https://cfg.acme.dev/profiles/base.yaml
+    integrity: sha256-<64 hex>                           # optional pin (fails closed)
+    auth:
+      tokenEnv: ACME_PROFILE_TOKEN                       # bearer token from env
+```
+
+**Supported sources**
+
+| Form | Example | Auth |
+|---|---|---|
+| https URL | `https://host/base.yaml` | optional bearer via `auth.tokenEnv` |
+| GitHub | `github:owner/repo//path[@ref]` or a `…/blob/<ref>/<path>` page URL | optional bearer |
+| git (SSH/HTTPS) | `git@host:owner/repo.git//path[@ref]`, `ssh://…`, `https://….git//path[@ref]` | user's git credential helper / SSH agent |
+| local file | `file:///abs/base.yaml`, or `{ url: ./rel/base.yaml }` (relative to the manifest) | — |
+
+- **Integrity.** An optional `sha256-<hex>` pin (via the `integrity` field or a
+  `#sha256=<hex>` fragment on the string form) is verified against the fetched
+  bytes; a mismatch fails closed.
+- **Auth.** Git sources reuse the user's existing git credential helper / SSH
+  agent — there is no second credential store. Raw https/GitHub sources may set
+  `auth.tokenEnv` (an env var name) to send `Authorization: Bearer <value>`.
+- **Caching & offline.** Fetched content is cached under `~/.cache/qavor/`
+  (`profiles/` for https/GitHub, `profiles-git/` for clones). `--offline`
+  resolves from cache only; `--refresh` re-fetches.
 
 ```yaml
 # indicates that the manifest describes an executable application
