@@ -77,7 +77,7 @@ export type Requirement1 = {
 export type HookCommands = string | [string, ...string[]];
 
 /**
- * Workspace pointer file. Lives at the root of the workspace directory as `qavor.yaml` and is created automatically by `qavor init`. Its only job is to point at the project repo whose `kind: project` manifest enumerates the rest of the workspace.
+ * Workspace pointer file. Used only by multi-repo workspaces: it lives at the root of the (non-git) workspace directory as `qavor.yaml`, is created automatically by `qavor init`, and its only job is to reference the project repo dir whose `kind: project` manifest enumerates the rest of the workspace. Single-repo (`standalone: true`) projects have no workspaces manifest — the repo is its own workspace.
  */
 export interface WorkspacesManifest {
   kind: 'workspaces';
@@ -88,13 +88,17 @@ export interface WorkspacesManifest {
   root_project_path: string;
 }
 /**
- * Project-level manifest. Lives at the root of the project repo as `qavor.yaml`. Defines workspace identity and is the single source of truth for the list of repos that make up the workspace. No other manifest kind contributes to the repo set.
+ * Project-level manifest. Lives at the root of the project repo as `qavor.yaml`. Defines workspace identity and is the single source of truth for the list of repos that make up the workspace. No other manifest kind contributes to the repo set. A `standalone: true` project is a single-repo project: the workspace is the repo holding this manifest and `repositories` must be omitted.
  */
 export interface ProjectManifest {
   kind: 'project';
   schemaVersion?: SchemaVersion;
   name: Name;
   description?: string;
+  /**
+   * Single-repo project. When true, the workspace is exactly the repo containing this manifest (no separate workspace-root pointer, no cloned siblings) and `repositories` must be omitted. When false/absent, this is a multi-repo project and `repositories` is required.
+   */
+  standalone?: boolean;
   git?: {
     /**
      * Base git URL for repos in this project. Combined with `repo_prefix` and a repo `name` to derive the clone URL when no explicit `url` is given.
@@ -132,7 +136,7 @@ export interface ProjectManifest {
    *
    * @minItems 1
    */
-  repositories: [Name | ProjectRepoEntry, ...(Name | ProjectRepoEntry)[]];
+  repositories?: [Name | ProjectRepoEntry, ...(Name | ProjectRepoEntry)[]];
 }
 /**
  * Runnable application: how to build and execute an app. This single kind covers both first-party apps (built and run natively or in a container) and externally provided backing dependencies such as postgres/kafka/redis (typically run via `docker-compose` per ADR-005, exposing a `env.publish` contract to dependents). Lives at the root of a single-service repo as `qavor.yaml`, or under a sub-directory of a multi-service repo (e.g. `service-foo/qavor.yaml`). A service manifest never defines the workspace repo set — the list of repositories comes solely from the `kind: project` manifest's `repositories:` list.

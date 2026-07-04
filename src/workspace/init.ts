@@ -6,9 +6,11 @@ import { loadManifestFile } from '../manifest/loader.js';
 import type { ProjectManifest } from '../manifest/types/index.js';
 import { validateDocument } from '../manifest/validator.js';
 import { ManifestError, UserError } from '../util/exit-codes.js';
-import { ensureDir, globalCacheDir, isDirectory, writeJsonFile } from '../util/fs.js';
+import { ensureDir, globalCacheDir, isDirectory } from '../util/fs.js';
 import type { Logger } from '../util/logger.js';
+import type { WorkspaceLayout } from './locate.js';
 import { type WorkspacePaths, workspacePaths } from './paths.js';
+import { ensureRepoGitignoresState, ensureStateDirs, writeWorkspaceMeta } from './scaffold.js';
 
 export interface InitOptions {
   /** Project repo source: local path or git URL. */
@@ -26,6 +28,8 @@ export interface InitResult {
   project: ProjectManifest;
   /** Whether init had to clone the project repo. */
   cloned: boolean;
+  /** Resolved workspace layout. */
+  layout: WorkspaceLayout;
 }
 
 const URL_RE = /^(?:git@[^:]+:|https?:\/\/|git:\/\/|ssh:\/\/|file:\/\/)/;
@@ -55,7 +59,7 @@ function projectRepoNameFromUrl(url: string): string {
 export async function initWorkspace(opts: InitOptions): Promise<InitResult> {
   const workspaceRoot = path.resolve(opts.into ?? process.cwd());
   await ensureDir(workspaceRoot);
-  const paths = workspacePaths(workspaceRoot);
+  let paths = workspacePaths(workspaceRoot);
 
   let projectRepoPath: string;
   let cloned = false;
@@ -120,21 +124,35 @@ export async function initWorkspace(opts: InitOptions): Promise<InitResult> {
   }
   const project = projectDoc.data as unknown as ProjectManifest;
 
+  // Single-repo (standalone) project: the repo is its own workspace root. Do
+  // NOT write a `kind: workspaces` pointer — it lives at the same `qavor.yaml`
+  // path and would overwrite the project manifest. Bootstrap `.qavor/` inside
+  // the repo instead.
+  if (project.standalone === true) {
+    paths = workspacePaths(projectRepoPath);
+    await ensureStateDirs(paths);
+    await ensureRepoGitignoresState(projectRepoPath);
+    await writeWorkspaceMeta(paths, {
+      projectName: project.name,
+      projectRepoPath,
+      manifestFile: projectManifestFile,
+      layout: 'single-repo',
+    });
+    return { paths, projectRepoPath, project, cloned, layout: 'single' };
+  }
+
+  // Guard the same clobber for a multi-repo project mistakenly initialized in
+  // place: the workspace root must be a parent of the project repo.
+  if (path.resolve(workspaceRoot) === path.resolve(projectRepoPath)) {
+    throw new UserError(
+      `Refusing to initialize a multi-repo workspace in place: ${workspaceRoot} is the project ` +
+        `repo itself, and \`qavor init\` would overwrite its \`kind: project\` manifest. ` +
+        `Initialize from the parent directory, or add \`standalone: true\` for a single-repo project.`,
+    );
+  }
+
   // Initialize workspace state directory.
-  await ensureDir(paths.stateRoot);
-  await ensureDir(paths.stateDir);
-  await ensureDir(paths.logsDir);
-  await ensureDir(paths.composeDir);
-  await ensureDir(paths.cacheDir);
-  await fs.writeFile(
-    paths.stateGitignore,
-    [
-      '# qavor state directory — all files are generated. Do not commit.',
-      '*',
-      '!.gitignore',
-      '',
-    ].join('\n'),
-  );
+  await ensureStateDirs(paths);
 
   // Write the workspaces pointer (idempotent).
   const relProjectPath = `./${path.relative(workspaceRoot, projectRepoPath).split(path.sep).join('/')}`;
@@ -142,17 +160,14 @@ export async function initWorkspace(opts: InitOptions): Promise<InitResult> {
   await fs.writeFile(paths.workspacesFile, workspacesYaml, 'utf8');
 
   // Workspace meta.
-  const manifestHash = createHash('sha256')
-    .update(await fs.readFile(projectManifestFile))
-    .digest('hex');
-  await writeJsonFile(paths.workspaceMetaFile, {
-    project_name: project.name,
-    project_repo_path: projectRepoPath,
-    manifest_hash: manifestHash,
-    initialized_at: new Date().toISOString(),
+  await writeWorkspaceMeta(paths, {
+    projectName: project.name,
+    projectRepoPath,
+    manifestFile: projectManifestFile,
+    layout: 'multi-repo',
   });
 
-  return { paths, projectRepoPath, project, cloned };
+  return { paths, projectRepoPath, project, cloned, layout: 'multi' };
 }
 
 function urlHash(url: string): string {

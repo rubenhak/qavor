@@ -96,6 +96,7 @@ function referencedNames(repositories: unknown): Set<string> {
  * in the project manifest are not duplicated.
  */
 export async function discoverRepos(opts: DiscoverOptions): Promise<DiscoverResult> {
+  if (opts.workspace.layout === 'single') return discoverSingleRepoServices(opts);
   const ws = opts.workspace;
   const root = ws.paths.root;
   const projectRepoDir = path.resolve(ws.projectRepoPath);
@@ -190,4 +191,90 @@ export async function discoverRepos(opts: DiscoverOptions): Promise<DiscoverResu
   }
 
   return { projectManifestFile: ws.projectManifestFile, projectUpdated, repos };
+}
+
+/** Directories never worth scanning for services in a single repo. */
+const SERVICE_SCAN_SKIP = new Set([
+  '.git',
+  '.qavor',
+  'node_modules',
+  '.venv',
+  'venv',
+  '__pycache__',
+  'dist',
+  'build',
+  'target',
+  '.next',
+  '.svelte-kit',
+  '.cache',
+]);
+const SERVICE_SCAN_MAX_DEPTH = 5;
+
+/** Coerce a directory basename into a valid service `name`, or null if impossible. */
+function toServiceName(dirName: string): string | null {
+  const name = dirName
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[^a-z0-9]+/, '')
+    .slice(0, 63);
+  return /^[a-z0-9][a-z0-9._-]{0,62}$/.test(name) ? name : null;
+}
+
+/**
+ * Single-repo variant of {@link discoverRepos}: scan the repo's own sub-directories
+ * for runnable apps (a `Dockerfile` with no accompanying `qavor.yaml`) and scaffold
+ * a `kind: service` manifest for each. Never touches `repositories:` — a standalone
+ * project has none. The repo root is skipped (it already holds the project manifest).
+ */
+async function discoverSingleRepoServices(opts: DiscoverOptions): Promise<DiscoverResult> {
+  const ws = opts.workspace;
+  const root = path.resolve(ws.projectRepoPath);
+  const repos: DiscoveredRepo[] = [];
+  const seenNames = new Set<string>();
+
+  async function* walk(dir: string, depth: number): AsyncGenerator<string, void, void> {
+    if (depth > SERVICE_SCAN_MAX_DEPTH) return;
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith('.') || SERVICE_SCAN_SKIP.has(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      yield full;
+      yield* walk(full, depth + 1);
+    }
+  }
+
+  const dirs: string[] = [];
+  for await (const d of walk(root, 1)) dirs.push(d);
+  dirs.sort();
+
+  for (const dir of dirs) {
+    const hasDockerfile = await isFile(path.join(dir, 'Dockerfile'));
+    if (!hasDockerfile) continue;
+    const manifestFile = path.join(dir, 'qavor.yaml');
+    const hasManifest = await isFile(manifestFile);
+    const name = toServiceName(path.basename(dir));
+    if (!name || seenNames.has(name)) continue;
+    seenNames.add(name);
+
+    const scaffold = !hasManifest;
+    if (scaffold && !opts.dryRun) {
+      await fs.writeFile(manifestFile, renderServiceManifest(name), 'utf8');
+    }
+    repos.push({
+      name,
+      dir,
+      manifestFile,
+      manifestCreated: scaffold,
+      referenceAdded: false,
+    });
+  }
+
+  repos.sort((a, b) => a.name.localeCompare(b.name));
+  return { projectManifestFile: ws.projectManifestFile, projectUpdated: false, repos };
 }

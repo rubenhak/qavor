@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qavor.dev/schemas/qavor.project.schema.json",
   "title": "qavor project manifest",
-  "description": "Project-level manifest. Lives at the root of the project repo as `qavor.yaml`. Defines workspace identity and is the single source of truth for the list of repos that make up the workspace. No other manifest kind contributes to the repo set.",
+  "description": "Project-level manifest. Lives at the root of the project repo as `qavor.yaml`. Defines workspace identity and is the single source of truth for the list of repos that make up the workspace. No other manifest kind contributes to the repo set. A `standalone: true` project is a single-repo project: the workspace is the repo holding this manifest and `repositories` must be omitted.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["kind", "name", "repositories"],
+  "required": ["kind", "name"],
   "properties": {
     "kind": { "const": "project" },
     "schemaVersion": {
@@ -16,6 +16,11 @@
       "description": "Human-readable workspace name. Used as the compose project namespace and the on-disk workspace identifier."
     },
     "description": { "type": "string" },
+    "standalone": {
+      "type": "boolean",
+      "default": false,
+      "description": "Single-repo project. When true, the workspace is exactly the repo containing this manifest (no separate workspace-root pointer, no cloned siblings) and `repositories` must be omitted. When false/absent, this is a multi-repo project and `repositories` is required."
+    },
     "git": {
       "type": "object",
       "additionalProperties": false,
@@ -67,6 +72,17 @@
       }
     }
   },
+  "allOf": [
+    {
+      "description": "A standalone (single-repo) project must not declare `repositories`; a multi-repo project must.",
+      "if": {
+        "required": ["standalone"],
+        "properties": { "standalone": { "const": true } }
+      },
+      "then": { "not": { "required": ["repositories"] } },
+      "else": { "required": ["repositories"] }
+    }
+  ],
   "$defs": {
     "repoEntry": {
       "type": "object",

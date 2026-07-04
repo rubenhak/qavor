@@ -121,6 +121,15 @@ After resolving the source, qavor:
 - The generated `kind: workspaces` file is small, deterministic, and safe to commit if a team chooses (it just records `root_project_path`).
 - A user can reproducibly recreate a workspace by running `qavor init <project-repo-url>` again into a new directory.
 
+**Amendment (2026-07, single-repo projects).** ADR-004 assumes a workspace of many repos and therefore mandated `qavor init` + a generated `kind: workspaces` pointer, explicitly rejecting the "inferred, no pointer file" option. That rejection was justified *only* by the multi-repo premise ("workspaces typically contain many repos; running from any of them must Just Work"). A **single-repo project** breaks that premise: the repo is the entire workspace, so there is nowhere else to run from and nothing to point at.
+
+For a `kind: project` manifest with `standalone: true` (and no `repositories:`):
+- There is **no `kind: workspaces` manifest** — the workspaces pointer is a multi-repo construct only. The repo containing the standalone project manifest *is* the workspace root.
+- `qavor init` is **not required**. Any command run inside the repo detects the standalone project by walking up (only after finding no `kind: workspaces` pointer), and lazily bootstraps an in-repo `.qavor/`. `qavor init` still works but refuses to write a pointer over the repo's own manifest.
+- The repo set is a single synthesized self-entry, so the multi-repo machinery (git fan-out, discovery, doctor) runs unchanged.
+
+This is an **additive carve-out**, not a reversal: multi-repo bootstrap still follows ADR-004 exactly. The inferred/no-pointer path is scoped strictly to the single-repo layout the original ADR did not consider. See `AGENTS.md §6` and [manifests.md](./manifests.md#single-repo-standalone-projects).
+
 ---
 
 ## ADR-005 — Compose file ownership: **generate-and-own with overlay overrides**

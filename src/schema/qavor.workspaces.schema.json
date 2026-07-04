@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qavor.dev/schemas/qavor.workspaces.schema.json",
   "title": "qavor workspaces manifest",
-  "description": "Workspace pointer file. Lives at the root of the workspace directory as `qavor.yaml` and is created automatically by `qavor init`. Its only job is to point at the project repo whose `kind: project` manifest enumerates the rest of the workspace.",
+  "description": "Workspace pointer file. Used only by multi-repo workspaces: it lives at the root of the (non-git) workspace directory as `qavor.yaml`, is created automatically by `qavor init`, and its only job is to reference the project repo dir whose `kind: project` manifest enumerates the rest of the workspace. Single-repo (`standalone: true`) projects have no workspaces manifest — the repo is its own workspace.",
   "type": "object",
   "additionalProperties": false,
   "required": ["kind", "root_project_path"],
