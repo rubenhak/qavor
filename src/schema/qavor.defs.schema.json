@@ -116,8 +116,54 @@
       "enum": ["native", "docker", "docker-compose"]
     },
     "profileRef": {
-      "description": "Reference to a profile by name. Profiles are merged in declaration order; later entries win.",
-      "$ref": "#/$defs/name"
+      "description": "Reference to a profile. Either a bare workspace-local name, a remote source URI (https / GitHub / git SSH or HTTPS / file), or a long-form object carrying the source plus optional pin and auth. Profiles are merged in declaration order; later entries win.",
+      "oneOf": [
+        { "$ref": "#/$defs/name" },
+        { "$ref": "#/$defs/profileSourceUri" },
+        { "$ref": "#/$defs/profileSource" }
+      ]
+    },
+    "profileSourceUri": {
+      "type": "string",
+      "description": "Remote profile source as a single string. Supported forms: an https URL to a YAML profile document; a GitHub blob/raw URL or `github:<owner>/<repo>//<path>[@<ref>]` shorthand; a git repo ref `git@host:owner/repo.git//<path>[@<ref>]` (or `ssh://` / `https://….git//<path>`); or a `file://` path. An optional `#sha256=<64 hex>` fragment pins the fetched content.",
+      "pattern": "^(https?://|git@|git://|ssh://|file://|github:).+"
+    },
+    "profileSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "description": "Long-form remote profile reference: a source URL plus optional git ref, integrity pin, expected name, and auth.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name",
+          "description": "Expected profile name. When set, the fetched profile's own `name` must match; it is also used as the local reference name."
+        },
+        "url": {
+          "type": "string",
+          "description": "Source URI. Same forms as a `profileSourceUri` string (https / GitHub / git / file)."
+        },
+        "ref": {
+          "type": "string",
+          "description": "Git ref (branch, tag, or commit) for git sources. Ignored for plain https/file sources."
+        },
+        "integrity": {
+          "type": "string",
+          "pattern": "^sha256-[A-Fa-f0-9]{64}$",
+          "description": "Optional Subresource-Integrity-style pin. When present the fetched content's sha256 must match, or resolution fails closed."
+        },
+        "auth": { "$ref": "#/$defs/profileAuth" }
+      }
+    },
+    "profileAuth": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Authentication for remote profile sources. Git sources authenticate through the user's git credential helper / SSH agent and need nothing here; https/GitHub sources may set a bearer token.",
+      "properties": {
+        "tokenEnv": {
+          "$ref": "#/$defs/envKey",
+          "description": "Name of an environment variable holding a bearer token, sent as `Authorization: Bearer <value>` on https/GitHub fetches."
+        }
+      }
     },
     "requirement": {
       "description": "A single dependency edge. Exactly one of `service` or `group` must be set. Backing services (postgres, kafka, …) are referenced the same way as any other service.",

@@ -180,6 +180,28 @@ This is an **additive carve-out**, not a reversal: multi-repo bootstrap still fo
 
 ---
 
+## ADR-007 — Remote profile sources: **profiles may be referenced by URL / git, fetched at registry-build time**
+
+**Status:** Accepted (2026-07).
+
+**Context.** Profiles (`kind: profile`) are reusable `runtime`/`mode`/`env` bundles referenced by name from a `profiles:` list. Teams want to share a curated profile across many workspaces without copying it into each one. ADR-004 deliberately rejected putting the **bootstrap/workspaces manifest** behind a URL (it duplicates information that belongs in the project repo, and would add a second auth surface). That rejection is about the workspace's *repo set*, not about reusable configuration fragments — a shared profile is content, not workspace identity, so the two concerns are distinct.
+
+**Options considered.**
+- **Names only (status quo)** — Simple, fully offline, but every workspace must vendor a copy of any shared profile and keep it in sync by hand.
+- **Project-level import block** — A `profileSources: [url]` list on the project manifest. Central, but adds a new top-level field and a second indirection (import, then reference by name).
+- **URL/object at the reference site (chosen)** — A `profiles:` entry may itself be a remote source (string URI or long-form object). Matches how profiles are already referenced; the fetched profile is registered under its declared name and then flows through the unchanged name-based resolver.
+
+**Decision.** A `profiles:` entry may be a bare name **or** a remote source. Supported sources: an https URL, a GitHub URL/shorthand, a git SSH/HTTPS repo ref (`…/repo.git//path[@ref]`), or a `file://`/relative path. A pre-pass in `buildWorkspaceRegistry` fetches each unique source (bounded fan-out, `AbortSignal`), validates it as `kind: profile`, registers it, and rewrites the reference to the profile's name so `manifest/resolve.ts` runs unchanged.
+
+**Consequences.**
+- **Auth, no new store.** Git sources authenticate through the user's existing git credential helper / SSH agent — consistent with ADR-004's "no second auth surface". The *only* new surface is an **optional** bearer token for raw https/GitHub sources, gated behind an explicit `auth.tokenEnv` (an env-var name); nothing is sent unless the manifest opts in.
+- **Integrity.** An optional `sha256` pin (SRI-style `integrity:` field or `#sha256=` fragment) is verified against the fetched bytes and fails closed on mismatch.
+- **Determinism / offline.** Fetched content is cached under `~/.cache/qavor/` (`profiles/` for https/GitHub, `profiles-git/` for clones — see ADR-006). `--offline` resolves from cache only; `--refresh` re-fetches. A workspace that declares no remote reference pays zero network cost.
+- **No new dependency.** Fetching uses Node's built-in `fetch` and the existing git wrapper (ADR-001 / AGENTS §4).
+- **Errors.** Fetch/git/integrity failures and invalid fetched documents are collected as manifest issues during registry build (fail-closed), reported with the source URI as the `file`; like any unresolvable reference they surface via the exit `2` (manifest error) path.
+
+---
+
 ## Decision summary table
 
 | ADR | Topic | Decision |
@@ -190,3 +212,4 @@ This is an **additive carve-out**, not a reversal: multi-repo bootstrap still fo
 | 004 | Bootstrap | **`qavor init <project-repo-source>`** — project repo is the seed; `kind: workspaces` pointer is generated |
 | 005 | Compose file | Generated-and-owned, with overlay overrides |
 | 006 | State directory | Per-workspace `./.qavor/` + global `~/.cache/qavor/` |
+| 007 | Remote profile sources | `profiles:` may reference a URL / git / file source; fetched, pinned, cached at registry-build time |

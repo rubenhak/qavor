@@ -15,6 +15,10 @@ export interface RootOptions {
   parallel: boolean;
   /** Path override for the workspace pointer file. */
   config: string | undefined;
+  /** `--offline`: resolve remote profile sources from cache only. */
+  offline: boolean;
+  /** `--refresh`: bypass caches and re-fetch remote profile sources. */
+  refresh: boolean;
 }
 
 export function rootOptions(cmd: Command): RootOptions {
@@ -26,6 +30,8 @@ export function rootOptions(cmd: Command): RootOptions {
     serial: Boolean(opts.serial),
     parallel: Boolean(opts.parallel),
     config: typeof opts.config === 'string' ? opts.config : undefined,
+    offline: Boolean(opts.offline),
+    refresh: Boolean(opts.refresh),
   };
 }
 
@@ -45,6 +51,8 @@ export function inheritRootOptions(cmd: Command): RootOptions {
       serial: false,
       parallel: false,
       config: undefined,
+      offline: false,
+      refresh: false,
     };
   return rootOptions(current);
 }

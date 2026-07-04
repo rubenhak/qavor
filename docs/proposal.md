@@ -113,7 +113,7 @@ For each category below: items already in the original brief are marked **(exist
 
 - (existing) Prepare node / python / uv dependencies
 - (new) **Per-runtime steps in the manifest** — reserved lifecycle keys `runtime.<backend>.{ check_installed, install, run }` plus any number of **user-defined commands** (e.g. `prepare`, `update_libraries`, `lint`). Each command is discovered and run on demand as `qavor <command>`; qavor assumes no fixed command set. A typical `prepare` command encapsulates whatever the language toolchain needs (`uv sync`, `pnpm install --frozen-lockfile`, `cargo fetch`, …).
-- (new) **Profiles for reuse** — common prepare/run recipes (e.g. `python_application`, `node_application`) live in profile manifests and are referenced by services.
+- (new) **Profiles for reuse** — common prepare/run recipes (e.g. `python_application`, `node_application`) live in profile manifests and are referenced by services. A `profiles:` entry may reference a profile by name (local) or by a **remote source** — https / GitHub / git / `file://` — so a curated profile can be shared across workspaces; the remote profile is fetched, optionally sha256-pinned, cached under `~/.cache/qavor/`, and resolved by name at registry-build time (ADR-007). `--offline` uses the cache only; `--refresh` re-fetches.
 - (new) **Toolchain version management** — detect & delegate to `mise`/`asdf` if present; otherwise warn through `qavor doctor`.
 - (new) **Lockfile-aware skip** — hash declared lockfile inputs to skip `prepare` when unchanged (massive ergonomic win).
 - (new) **Code generation step** — model as a profile or a `prepare` step that runs `buf generate`, OpenAPI generators, etc., before `run`.

@@ -43,6 +43,8 @@ function buildProgram(dynamicCommands: readonly string[]): Command {
     })
     .option('--serial', 'Run fan-out operations one repo/service at a time.')
     .option('--parallel', 'Run fan-out operations with bounded concurrency (see --jobs).')
+    .option('--offline', 'Resolve remote profile sources from cache only; never hit the network.')
+    .option('--refresh', 'Bypass caches and re-fetch remote profile sources.')
     .hook('preAction', (thisCommand) => {
       const opts = thisCommand.opts();
       configureLogger({ json: Boolean(opts.json), verbose: Boolean(opts.verbose) });
@@ -94,7 +96,14 @@ async function discoverCommandNames(argv: string[]): Promise<string[]> {
   const sub = firstSubcommand(argv);
   if (sub !== undefined && sub !== 'help' && STATIC_COMMAND_NAMES.has(sub)) return [];
   try {
-    const ctx = await loadServicesContext();
+    // Root flags aren't parsed yet at startup discovery; scan argv so remote
+    // profile resolution honors --offline / --refresh on the first (memoized)
+    // registry build that dynamic-command actions later reuse.
+    const flags = argv.slice(2);
+    const ctx = await loadServicesContext({
+      offline: flags.includes('--offline'),
+      refresh: flags.includes('--refresh'),
+    });
     const names = new Set<string>();
     for (const entry of ctx.services) {
       for (const name of serviceCommandNames(entry.data as unknown as ServiceManifest)) {
