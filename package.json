@@ -1,6 +1,6 @@
 {
   "name": "qavor",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "A CLI for managing a constellation of related repositories as one cohesive developer workspace.",
   "repository": {
     "type": "git",
