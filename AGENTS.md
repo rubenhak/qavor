@@ -93,6 +93,8 @@ Every YAML document carries a top-level `kind:` that selects its schema and orch
 
 The repo set is defined **exclusively** by the `kind: project` manifest's `repositories:` list. `kind: service` manifests (whether first-party apps or backing deps) never alter which repos belong to the workspace. A repo belongs to the workspace because the project manifest lists it; a repo may contain zero, one, or many service manifests.
 
+**Single-repo (standalone) projects.** A `kind: project` manifest may set `standalone: true` and omit `repositories:` entirely. This declares a *single-repo project*: the repo holding the manifest **is** the workspace, there is no separate workspace-root dir and no generated `kind: workspaces` pointer, and the `.qavor/` state dir lives inside the repo. Services are found by the normal sub-directory scan, so a single repo can host one root service (a 2-document root `qavor.yaml` of `kind: project` + `kind: service`) or many services in sub-dirs. Detection: `resolveWorkspace` first looks for a `kind: workspaces` pointer up-tree (→ multi-repo); with none, it accepts a `standalone` `kind: project` at a repo root (→ single-repo). A non-`standalone` project with no pointer is an error. `resolveRepos` synthesizes a single self-entry for standalone projects so every multi-repo consumer (git fan-out, discovery, doctor) works unchanged over the one repo. Single-repo needs no `qavor init` — `.qavor/` is bootstrapped lazily on first command.
+
 A repo may put all manifests in one multi-document `qavor.yaml` (separated by `---`) or split them under a `qavor/` sub-directory. Both forms mix kinds freely. Validators must handle both.
 
 Cross-repo refs use names (`{ service: token-issuer }`, `{ service: postgres }`); names are unique workspace-wide. The workspace registry is `name → (kind, file, parsed)`.
@@ -137,6 +139,8 @@ The full chain is defined in `docs/proposal.md` §6 and `docs/manifests.md`. Sum
 3. a path inside an existing workspace (re-init / repair — must be idempotent).
 
 `qavor init` then reads the project repo's `qavor.yaml` (must be `kind: project`), writes the workspace-root `qavor.yaml` (`kind: workspaces`, `root_project_path:` pointing at the project repo), and clones the rest.
+
+**Single-repo exception (deviation from the original ADR-004).** A `standalone: true` project needs no `qavor init`: any command run inside the repo detects it (see §6) and lazily bootstraps an in-repo `.qavor/`. `qavor init` refuses to write a pointer over a standalone project's own manifest (and over any in-place multi-repo project repo) to avoid clobbering it.
 
 ---
 

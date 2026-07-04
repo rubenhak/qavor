@@ -29,8 +29,30 @@ interface ResolveOpts {
 /**
  * Resolve every repo entry in a project manifest to a concrete clone target.
  * Skips the project repo (caller already has it).
+ *
+ * A standalone (single-repo) project declares no `repositories`; the workspace
+ * is the project repo itself. We synthesize one self-entry so every downstream
+ * multi-repo consumer (git fan-out, discovery, doctor, …) operates over the one
+ * repo with no special-casing.
  */
 export function resolveRepos(opts: ResolveOpts): ResolvedRepo[] {
+  if (opts.project.standalone === true || !opts.project.repositories) {
+    return [
+      {
+        name: opts.project.name,
+        url: '',
+        dir: path.resolve(opts.projectRepoPath),
+        branch: opts.project.git?.default_branch,
+        tag: undefined,
+        commit: undefined,
+        shallow: opts.project.git?.shallow,
+        submodules: opts.project.git?.submodules,
+        optional: false,
+        isProjectRepo: true,
+      },
+    ];
+  }
+
   const list = opts.project.repositories;
   const repos: ResolvedRepo[] = [];
   const seen = new Set<string>();

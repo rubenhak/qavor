@@ -16,20 +16,26 @@ export function registerInit(program: Command): void {
       const initOpts: Parameters<typeof initWorkspace>[0] = { source, logger };
       if (opts.into) initOpts.into = opts.into;
       const result = await initWorkspace(initOpts);
+      const repoCount = result.project.repositories?.length ?? 0;
       if (root.json) {
         emitJson({
           ok: true,
           workspace: result.paths.root,
+          layout: result.layout,
           project_name: result.project.name,
           project_repo_path: result.projectRepoPath,
           cloned_project: result.cloned,
-          repositories: result.project.repositories.length,
+          repositories: repoCount,
         });
+      } else if (result.layout === 'single') {
+        emit(`Single-repo workspace initialized at ${result.paths.root}`);
+        emit(`  project: ${result.project.name}`);
+        emit(`  next: qavor discover  (scaffold service manifests), then qavor up`);
       } else {
         emit(`Workspace initialized at ${result.paths.root}`);
         emit(`  project: ${result.project.name}`);
         emit(`  project repo: ${path.relative(result.paths.root, result.projectRepoPath)}`);
-        emit(`  repositories declared: ${result.project.repositories.length}`);
+        emit(`  repositories declared: ${repoCount}`);
         emit(`  next: qavor clone`);
       }
     });

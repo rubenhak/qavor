@@ -94,6 +94,14 @@ async function buildWrapper(): Promise<JSONSchema> {
     const cleaned: Record<string, unknown> = { ...schema };
     delete cleaned.$schema;
     delete cleaned.$id;
+    // A top-level `allOf` on a per-kind schema encodes cross-field constraints
+    // (e.g. the project manifest's `standalone` XOR `repositories`) that Ajv
+    // enforces at runtime but that have no TypeScript representation. Left in,
+    // json-schema-to-typescript cannot resolve the `if/then/else` and collapses
+    // the whole interface to an opaque `{ [k: string]: unknown }` index
+    // signature. Strip it for type generation only; validation keeps it via the
+    // runtime schema copy in `src/schema/`.
+    delete cleaned.allOf;
     if (typeof cleaned.title === 'string') {
       cleaned.title = typeName;
     } else {

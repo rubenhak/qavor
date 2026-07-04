@@ -39,6 +39,45 @@ A typical workspace on disk looks like this:
 └── another-repo.git/              # plain repo; qavor.yaml is optional
 ```
 
+## Single-repo (standalone) projects
+
+A project does not need a separate workspace dir and a list of sibling repos. A
+`kind: project` manifest with `standalone: true` (and no `repositories:`) declares
+that **the repo holding it is the whole workspace**. There is no `kind: workspaces`
+pointer; the `.qavor/` state dir lives inside the repo (auto-gitignored) and is
+bootstrapped on first command — no `qavor init` needed.
+
+Case 1 — a single repo with one top-level service (a 2-document root `qavor.yaml`):
+
+```yaml
+kind: project
+name: my-app
+standalone: true
+---
+kind: service
+name: api
+mode: native
+runtime:
+  native:
+    enabled: true
+    run: { cmd: pnpm start }
+```
+
+Case 2 — a single repo with several services a few directories down. The root holds
+only the standalone project; services are discovered by the normal sub-directory scan:
+
+```
+<repo>/                            # the git repo == the workspace
+├── qavor.yaml                     # kind: project, standalone: true
+├── services/
+│   ├── gateway/qavor.yaml         # kind: service
+│   └── worker/qavor.yaml          # kind: service
+└── .qavor/                        # in-repo state (gitignored)
+```
+
+`qavor discover` in a single-repo scans the repo's own sub-directories and scaffolds a
+`kind: service` manifest into any Dockerfile-bearing dir (it never writes `repositories:`).
+
 ## Workspaces Manifest
 
 The workspace-level manifest. This file is created dynamically as the part of the
