@@ -54,13 +54,32 @@ export type ProfileSourceUri = string;
  */
 export type EnvKey = string;
 /**
- * A runtime step value: either a single step object, or a list of step objects run in sequence. Each list entry is a full step (its own `cmd`/`cwd`/`env`/`shell`); steps run in declaration order and the first non-zero exit aborts the rest. The single-object form (`prepare: { cmd: "…" }`) and the list form (`prepare: [{ cmd: "…" }, { cmd: "…" }]`) are interchangeable. `run` accepts only a single step.
+ * A runtime command value that additionally supports profile-merge directives: either a single step or a list of steps (like `runtimeStepOrList`), or a `runtimeMergeDirective` object (`$append`/`$prepend`/`$replace`/`$unset`) that controls how this value merges with the same command inherited from a referenced profile. The bare step / list form keeps the default behaviour (replace the inherited value).
  */
-export type RuntimeStepOrList = RuntimeStep | [RuntimeStep, ...RuntimeStep[]];
+export type RuntimeStepOrMerge =
+  | RuntimeStep
+  | [RuntimeStep, ...RuntimeStep[]]
+  | RuntimeMergeDirective;
 /**
  * Scalar value usable on the right-hand side of an env entry. Strings support ${VAR} and ${secret:NAME} interpolation.
  */
 export type EnvScalar = string | number | boolean;
+/**
+ * Merge directive controlling how a runtime command value combines with the same command inherited from a referenced profile. Exactly one of `$append`/`$prepend`/`$replace`/`$unset` may be set. `$append`/`$prepend` splice the given step(s) after / before the inherited steps; `$replace` overrides them entirely (the same effect as a bare list, stated explicitly); `$unset: true` drops the inherited command. On a command with no inherited value, `$append`/`$prepend`/`$replace` simply yield the given step(s) and `$unset` is a no-op.
+ */
+export type RuntimeMergeDirective = {
+  $append?: RuntimeStepOrList;
+  $prepend?: RuntimeStepOrList;
+  $replace?: RuntimeStepOrList;
+  $unset?: true;
+} & RuntimeMergeDirective1;
+/**
+ * A runtime step value: either a single step object, or a list of step objects run in sequence. Each list entry is a full step (its own `cmd`/`cwd`/`env`/`shell`); steps run in declaration order and the first non-zero exit aborts the rest. The single-object form (`prepare: { cmd: "…" }`) and the list form (`prepare: [{ cmd: "…" }, { cmd: "…" }]`) are interchangeable. `run` accepts only a single step.
+ */
+export type RuntimeStepOrList = RuntimeStep | [RuntimeStep, ...RuntimeStep[]];
+export type RuntimeMergeDirective1 = {
+  [k: string]: unknown | undefined;
+};
 /**
  * A single dependency edge. Exactly one of `service` or `group` must be set. Backing services (postgres, kafka, …) are referenced the same way as any other service.
  */
@@ -212,12 +231,12 @@ export interface RuntimeBlock {
   'docker-compose'?: RuntimeBackend;
 }
 /**
- * Runtime backend definition. A small set of keys is reserved for the start lifecycle: `enabled` (gate), `check_installed` + `install` (installation — install runs only when check_installed fails), and `run` (the long-lived process started by `qavor up`; `run` takes a single step). Every *other* key is a user-defined command — a named shell step (or list of steps) discovered and run on demand by `qavor <command>` (e.g. `prepare`, `update_libraries`, `lint`, `test`, `migrate`). qavor assumes no fixed command set: any command declared here is runnable, fanned out across the services that define it. Each command accepts a single step or a list of steps run in declaration order; the first non-zero exit aborts the rest.
+ * Runtime backend definition. A small set of keys is reserved for the start lifecycle: `enabled` (gate), `check_installed` + `install` (installation — install runs only when check_installed fails), and `run` (the long-lived process started by `qavor up`; `run` takes a single step). Every *other* key is a user-defined command — a named shell step (or list of steps) discovered and run on demand by `qavor <command>` (e.g. `prepare`, `update_libraries`, `lint`, `test`, `migrate`). qavor assumes no fixed command set: any command declared here is runnable, fanned out across the services that define it. Each command accepts a single step or a list of steps run in declaration order; the first non-zero exit aborts the rest. `check_installed`, `install`, and user-defined commands additionally accept a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) to extend rather than replace a step list inherited from a referenced profile; `run` does not (it is a single step).
  */
 export interface RuntimeBackend {
   enabled?: boolean;
-  check_installed?: RuntimeStepOrList;
-  install?: RuntimeStepOrList;
+  check_installed?: RuntimeStepOrMerge;
+  install?: RuntimeStepOrMerge;
   run?: RuntimeStepOrList;
 }
 /**

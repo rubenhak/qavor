@@ -231,3 +231,226 @@ test('resolve-manifest: a profile-free manifest passes through unchanged', async
     await cleanup(ws);
   }
 });
+
+/** Read a resolved backend command's step list (via the flattened runtime block). */
+function stepCmds(resolved: { data: Record<string, unknown> }, command: string): unknown {
+  const runtime = resolved.data.runtime as {
+    native?: Record<string, unknown>;
+  };
+  const value = runtime.native?.[command];
+  if (value === undefined) return undefined;
+  const list = Array.isArray(value) ? value : [value];
+  return list.map((s) => (s as { cmd: string }).cmd);
+}
+
+test('resolve-manifest: bare list replaces an inherited step list (default)', async () => {
+  const ws = await makeTempDir('qavor-resolve-manifest-');
+  try {
+    const base = await makeEntry(
+      ws,
+      'base',
+      [
+        'kind: profile',
+        'name: base',
+        'runtime: { native: { prepare: [ {cmd: a}, {cmd: b} ] } }',
+        '',
+      ].join('\n'),
+    );
+    const service = await makeEntry(
+      ws,
+      'svc',
+      [
+        'kind: service',
+        'name: svc',
+        'profiles: [base]',
+        'runtime: { native: { prepare: [ {cmd: c} ] } }',
+        '',
+      ].join('\n'),
+    );
+    const resolved = resolveManifest(service, registryOf([base, service]));
+    assert.deepEqual(stepCmds(resolved, 'prepare'), ['c']);
+  } finally {
+    await cleanup(ws);
+  }
+});
+
+test('resolve-manifest: $append extends an inherited step list', async () => {
+  const ws = await makeTempDir('qavor-resolve-manifest-');
+  try {
+    const base = await makeEntry(
+      ws,
+      'base',
+      [
+        'kind: profile',
+        'name: base',
+        'runtime: { native: { prepare: [ {cmd: a}, {cmd: b} ] } }',
+        '',
+      ].join('\n'),
+    );
+    const service = await makeEntry(
+      ws,
+      'svc',
+      [
+        'kind: service',
+        'name: svc',
+        'profiles: [base]',
+        'runtime: { native: { prepare: { $append: [ {cmd: c} ] } } }',
+        '',
+      ].join('\n'),
+    );
+    const resolved = resolveManifest(service, registryOf([base, service]));
+    assert.deepEqual(stepCmds(resolved, 'prepare'), ['a', 'b', 'c']);
+  } finally {
+    await cleanup(ws);
+  }
+});
+
+test('resolve-manifest: $prepend extends an inherited step list at the front', async () => {
+  const ws = await makeTempDir('qavor-resolve-manifest-');
+  try {
+    const base = await makeEntry(
+      ws,
+      'base',
+      [
+        'kind: profile',
+        'name: base',
+        'runtime: { native: { prepare: [ {cmd: a}, {cmd: b} ] } }',
+        '',
+      ].join('\n'),
+    );
+    const service = await makeEntry(
+      ws,
+      'svc',
+      [
+        'kind: service',
+        'name: svc',
+        'profiles: [base]',
+        'runtime: { native: { prepare: { $prepend: [ {cmd: c} ] } } }',
+        '',
+      ].join('\n'),
+    );
+    const resolved = resolveManifest(service, registryOf([base, service]));
+    assert.deepEqual(stepCmds(resolved, 'prepare'), ['c', 'a', 'b']);
+  } finally {
+    await cleanup(ws);
+  }
+});
+
+test('resolve-manifest: $append against a single-step parent normalizes then appends', async () => {
+  const ws = await makeTempDir('qavor-resolve-manifest-');
+  try {
+    const base = await makeEntry(
+      ws,
+      'base',
+      ['kind: profile', 'name: base', 'runtime: { native: { prepare: {cmd: a} } }', ''].join('\n'),
+    );
+    const service = await makeEntry(
+      ws,
+      'svc',
+      [
+        'kind: service',
+        'name: svc',
+        'profiles: [base]',
+        'runtime: { native: { prepare: { $append: [ {cmd: b} ] } } }',
+        '',
+      ].join('\n'),
+    );
+    const resolved = resolveManifest(service, registryOf([base, service]));
+    assert.deepEqual(stepCmds(resolved, 'prepare'), ['a', 'b']);
+  } finally {
+    await cleanup(ws);
+  }
+});
+
+test('resolve-manifest: $unset drops a command inherited from a profile', async () => {
+  const ws = await makeTempDir('qavor-resolve-manifest-');
+  try {
+    const base = await makeEntry(
+      ws,
+      'base',
+      [
+        'kind: profile',
+        'name: base',
+        'runtime: { native: { prepare: [ {cmd: a} ], test: [ {cmd: t} ] } }',
+        '',
+      ].join('\n'),
+    );
+    const service = await makeEntry(
+      ws,
+      'svc',
+      [
+        'kind: service',
+        'name: svc',
+        'profiles: [base]',
+        'runtime: { native: { prepare: { $unset: true } } }',
+        '',
+      ].join('\n'),
+    );
+    const resolved = resolveManifest(service, registryOf([base, service]));
+    assert.equal(stepCmds(resolved, 'prepare'), undefined);
+    // Sibling command is untouched.
+    assert.deepEqual(stepCmds(resolved, 'test'), ['t']);
+  } finally {
+    await cleanup(ws);
+  }
+});
+
+test('resolve-manifest: a directive with no inherited command yields just its steps', async () => {
+  const ws = await makeTempDir('qavor-resolve-manifest-');
+  try {
+    // No profile at all: the directive still collapses to a concrete list.
+    const service = await makeEntry(
+      ws,
+      'svc',
+      [
+        'kind: service',
+        'name: svc',
+        'runtime: { native: { prepare: { $append: [ {cmd: a} ] } } }',
+        '',
+      ].join('\n'),
+    );
+    const resolved = resolveManifest(service, registryOf([service]));
+    assert.deepEqual(stepCmds(resolved, 'prepare'), ['a']);
+  } finally {
+    await cleanup(ws);
+  }
+});
+
+test('resolve-manifest: $append composes down a profile chain', async () => {
+  const ws = await makeTempDir('qavor-resolve-manifest-');
+  try {
+    const base = await makeEntry(
+      ws,
+      'base',
+      ['kind: profile', 'name: base', 'runtime: { native: { prepare: [ {cmd: a} ] } }', ''].join(
+        '\n',
+      ),
+    );
+    const mid = await makeEntry(
+      ws,
+      'mid',
+      [
+        'kind: profile',
+        'name: mid',
+        'profiles: [base]',
+        'runtime: { native: { prepare: { $append: [ {cmd: b} ] } } }',
+        '',
+      ].join('\n'),
+    );
+    const service = await makeEntry(
+      ws,
+      'svc',
+      [
+        'kind: service',
+        'name: svc',
+        'profiles: [mid]',
+        'runtime: { native: { prepare: { $append: [ {cmd: c} ] } } }',
+        '',
+      ].join('\n'),
+    );
+    const resolved = resolveManifest(service, registryOf([base, mid, service]));
+    assert.deepEqual(stepCmds(resolved, 'prepare'), ['a', 'b', 'c']);
+  } finally {
+    await cleanup(ws);
+  }
+});
