@@ -336,8 +336,9 @@ qavor resolve-env --only auth --json
 
 ## Profile Manifest
 Profiles allow configuration reusability and can be referenced from service manifests.
-Multiple profiles can bee referenced. The order is from top to bottom. Profiles should be able to reference
-other profiles as well.
+Multiple profiles can be referenced; they merge in declaration order, from top to
+bottom, with later entries winning. A profile may itself reference other profiles
+(see [Profile inheritance](#profile-inheritance-and-step-list-merge-directives) below).
 
 
 ```yaml
@@ -398,6 +399,58 @@ env:
   common:
     LOG_LEVEL: info
 ```
+
+### Profile inheritance and step-list merge directives
+
+A profile may itself carry a `profiles:` list, so profiles inherit from one or
+more parent profiles. The chain is flattened at registry-build time: parents are
+merged in declaration order (later winning), and the referencing profile/service
+merges on top. `mode` and scalar values replace; `env` maps deep-merge key by
+key; **runtime step lists replace by default** — a `prepare:` list on a child
+overrides the parent's `prepare:` outright.
+
+To *extend* an inherited step list instead of replacing it, a command may use a
+**merge directive** — an object with exactly one of `$append` / `$prepend` /
+`$replace` / `$unset`. Directives are available on `check_installed`, `install`,
+and every user-defined command; `run` is single-step and does not take them.
+
+```yaml
+kind: profile
+name: node_base
+runtime:
+  native:
+    prepare:
+      - { cmd: "pnpm install" }
+      - { cmd: "pnpm build" }
+    test:
+      - { cmd: "pnpm test:unit" }
+---
+kind: service
+name: web
+profiles: [node_base]
+runtime:
+  native:
+    # $prepend: run codegen before the inherited install/build steps
+    prepare:
+      $prepend:
+        - { cmd: "pnpm codegen" }
+    # $append: add an integration pass after the inherited unit tests
+    test:
+      $append:
+        - { cmd: "pnpm test:int" }
+    # $replace: explicit form of the default (override inherited steps)
+    lint:
+      $replace:
+        - { cmd: "biome check ." }
+    # $unset: drop a command the parent defined
+    migrate: { $unset: true }
+```
+
+`web` resolves to `prepare: [codegen, install, build]`,
+`test: [test:unit, test:int]`, `lint: [biome check .]`, and no `migrate`.
+Directives compose down a chain: each layer sees the steps accumulated by the
+layers below it. On a command with no inherited value, `$append`/`$prepend`/
+`$replace` simply yield their own steps and `$unset` is a no-op.
 
 ### Remote profile references
 

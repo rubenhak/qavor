@@ -1,6 +1,7 @@
 import { ManifestError, UserError } from '../util/exit-codes.js';
 import type { RegistryEntry, WorkspaceRegistry } from './discovery.js';
-import type { ManifestKind } from './types/index.js';
+import { normalizeSteps } from './steps.js';
+import type { ManifestKind, RuntimeStepOrList } from './types/index.js';
 
 /** Fields a profile contributes to (and that the referencing manifest overrides). */
 const OVERLAY_KEYS = ['mode', 'runtime', 'env'] as const;
@@ -162,12 +163,64 @@ function mergeOverlay(base: Overlay, top: Overlay): Overlay {
   return out;
 }
 
-/** Recursively merge plain objects; everything else is replaced by `top`. */
+/**
+ * Recursively merge plain objects; everything else is replaced by `top`.
+ *
+ * Runtime step lists additionally honour profile-merge directives: when `top`
+ * is an `$append`/`$prepend`/`$replace` directive it is computed against the
+ * inherited `base` (see {@link applyDirective}), and an `$unset` child value is
+ * deleted rather than assigned. Any other array or scalar replaces `base`.
+ */
 function deepMerge(base: unknown, top: unknown): unknown {
-  if (!isPlainObject(base) || !isPlainObject(top)) return top;
+  if (isMergeDirective(top)) return applyDirective(base, top);
+  if (!isPlainObject(top)) return top;
+  // Fresh subtree (no object to merge into): still resolve any nested directives.
+  if (!isPlainObject(base)) return materialize(top);
   const out: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(top)) {
-    out[key] = key in out ? deepMerge(out[key], value) : value;
+    if (isUnset(value)) {
+      delete out[key];
+      continue;
+    }
+    out[key] = key in out ? deepMerge(out[key], value) : materialize(value);
+  }
+  return out;
+}
+
+const DIRECTIVE_KEYS = ['$append', '$prepend', '$replace'] as const;
+
+/** A step-list merge directive (`$append`/`$prepend`/`$replace`); `$unset` is handled separately. */
+function isMergeDirective(v: unknown): v is Record<string, unknown> {
+  return isPlainObject(v) && DIRECTIVE_KEYS.some((k) => k in v);
+}
+
+/** The `{ $unset: true }` directive: drop a command inherited from a profile. */
+function isUnset(v: unknown): boolean {
+  return isPlainObject(v) && v.$unset === true;
+}
+
+/** Apply a step-list directive against the inherited value, yielding a concrete step list. */
+function applyDirective(base: unknown, dir: Record<string, unknown>): unknown {
+  if ('$replace' in dir) return dir.$replace;
+  const inherited = normalizeSteps(base as RuntimeStepOrList | undefined);
+  if ('$prepend' in dir) {
+    return [...normalizeSteps(dir.$prepend as RuntimeStepOrList), ...inherited];
+  }
+  return [...inherited, ...normalizeSteps(dir.$append as RuntimeStepOrList)];
+}
+
+/**
+ * Resolve a value that has no inherited base (a fresh key): recurse through
+ * plain objects so nested directives collapse to concrete step lists, drop any
+ * `$unset` (nothing to remove), and pass scalars/arrays through untouched.
+ */
+function materialize(v: unknown): unknown {
+  if (isMergeDirective(v)) return applyDirective(undefined, v);
+  if (!isPlainObject(v)) return v;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(v)) {
+    if (isUnset(value)) continue;
+    out[key] = materialize(value);
   }
   return out;
 }

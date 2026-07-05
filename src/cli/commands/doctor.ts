@@ -5,7 +5,11 @@ import { execa } from 'execa';
 import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
 import { type LoadedDocument, loadManifestFile } from '../../manifest/loader.js';
 import { normalizeSteps } from '../../manifest/steps.js';
-import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
+import type {
+  ProjectManifest,
+  RuntimeStepOrList,
+  ServiceManifest,
+} from '../../manifest/types/index.js';
 import { formatIssue } from '../../manifest/validator.js';
 import { resolveJobs } from '../../util/concurrency.js';
 import { RuntimeFailure } from '../../util/exit-codes.js';
@@ -149,7 +153,11 @@ export function registerDoctor(program: Command): void {
         for (const entry of registry.entries) {
           if (entry.kind !== 'service') continue;
           const svc = entry.data as unknown as ServiceManifest;
-          const checkSteps = normalizeSteps(svc.runtime?.native?.check_installed);
+          // Resolved data: profile-merge directives are already collapsed, so the
+          // value is a concrete step-or-list (cf. runtime.ts).
+          const checkSteps = normalizeSteps(
+            svc.runtime?.native?.check_installed as RuntimeStepOrList | undefined,
+          );
           if (checkSteps.length === 0) {
             checks.push({
               name: `service ${entry.name}: check_installed`,
@@ -174,7 +182,9 @@ export function registerDoctor(program: Command): void {
           if (!failure) {
             checks.push({ name: `service ${entry.name}: check_installed`, status: 'ok' });
           } else {
-            const installHint = normalizeSteps(svc.runtime?.native?.install)[0]?.cmd;
+            const installHint = normalizeSteps(
+              svc.runtime?.native?.install as RuntimeStepOrList | undefined,
+            )[0]?.cmd;
             const stepLabel =
               checkSteps.length > 1 ? ` (step ${failure.index + 1}/${checkSteps.length})` : '';
             const failCheck: Check = {

@@ -177,6 +177,83 @@ test('validator: empty list-form step and item missing cmd are rejected', async 
   }
 });
 
+test('validator: profile-merge directive on a command passes', async () => {
+  const dir = await makeTempDir();
+  try {
+    const file = await writeYaml(
+      dir,
+      'qavor.yaml',
+      [
+        'kind: service',
+        'name: merge',
+        'profiles: [base]',
+        'runtime:',
+        '  native:',
+        '    prepare: { $append: [ { cmd: "echo extra" } ] }',
+        '    lint: { $prepend: [ { cmd: "echo first" } ] }',
+        '    migrate: { $unset: true }',
+        '',
+      ].join('\n'),
+    );
+    const docs = await loadManifestFile(file);
+    assert.equal(validateDocument(docs[0]!).ok, true);
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test('validator: malformed merge directives are rejected', async () => {
+  const dir = await makeTempDir();
+  try {
+    // Two directive keys at once — oneOf requires exactly one.
+    const twoKeys = await writeYaml(
+      dir,
+      'two.yaml',
+      [
+        'kind: service',
+        'name: two',
+        'runtime:',
+        '  native:',
+        '    prepare: { $append: [ { cmd: a } ], $prepend: [ { cmd: b } ] }',
+        '',
+      ].join('\n'),
+    );
+    assert.equal(validateDocument((await loadManifestFile(twoKeys))[0]!).ok, false);
+
+    // $unset must be the constant `true`.
+    const badUnset = await writeYaml(
+      dir,
+      'unset.yaml',
+      [
+        'kind: service',
+        'name: unset',
+        'runtime:',
+        '  native:',
+        '    prepare: { $unset: false }',
+        '',
+      ].join('\n'),
+    );
+    assert.equal(validateDocument((await loadManifestFile(badUnset))[0]!).ok, false);
+
+    // `run` is single-step only — directives are not allowed on it.
+    const runDirective = await writeYaml(
+      dir,
+      'run.yaml',
+      [
+        'kind: service',
+        'name: rundir',
+        'runtime:',
+        '  native:',
+        '    run: { $append: [ { cmd: a } ] }',
+        '',
+      ].join('\n'),
+    );
+    assert.equal(validateDocument((await loadManifestFile(runDirective))[0]!).ok, false);
+  } finally {
+    await cleanup(dir);
+  }
+});
+
 test('discoverManifestFiles: finds nested manifests up to MAX_DEPTH (5)', async () => {
   const dir = await makeTempDir();
   try {
