@@ -1,9 +1,36 @@
-# Qavor — Product Proposal (Draft v0)
+# Qavor — Product Proposal
 
 A CLI for managing a constellation of related repositories as one cohesive developer workspace.
 
-> Status: **Draft v0** — for review.
+> Status: **partially implemented.** This document remains the north-star vision.
+> The MVP has shipped and several later items have landed; the rest is on the
+> roadmap. Each requirement in §5 is tagged with its current state — see the
+> legend in [§0](#0-implementation-status). For the always-current summary, see
+> the [README](../README.md) *Implementation status* section and
+> [mvp-tasks.md](./mvp-tasks.md).
 > Companion documents: [manifests.md](./manifests.md) (manifest reference & source of truth), [decisions.md](./decisions.md), [mvp-tasks.md](./mvp-tasks.md), [schemas/](./schemas/).
+
+---
+
+## 0. Implementation status
+
+The vision below was written before implementation. Requirements in §5 now carry
+a status tag so the proposal doubles as a scorecard:
+
+- ✅ **done** — implemented and shipped.
+- 🟡 **partial** — the mechanism exists but is limited (e.g. contract composes but
+  is not yet executed at runtime).
+- ⬜ **planned** — designed here, not yet built.
+
+**Roughly where things stand:** workspace bootstrap, the full manifest model,
+git fan-out, env composition (including `require:` deps and `env.publish`
+contracts), profiles (local + remote, chaining, merge directives), dynamic
+manifest commands, and native process supervision are **done**. Container
+execution (`mode: docker` / `docker-compose`), backing-service *bring-up*,
+`${secret:...}`, the runtime dependency graph (topological start / readiness),
+group & tag selectors, and the `graph` / `explain` / `docs` introspection verbs
+are **planned**. See [mvp-tasks.md](./mvp-tasks.md#roadmap-not-yet-implemented)
+for the ordered roadmap.
 
 ---
 
@@ -91,35 +118,35 @@ A repo may put all its manifests in a single multi-document `qavor.yaml` (separa
 
 ---
 
-## 5. Requirements — Evaluation + Proposed Additions
+## 5. Requirements — with implementation status
 
-For each category below: items already in the original brief are marked **(existing)**; new proposals are marked **(new)**.
+Each item is tagged ✅ done · 🟡 partial · ⬜ planned (see [§0](#0-implementation-status)).
 
 ### 5.1 Repo Management
 
-- (existing) Clone all project repos
-- (existing) Group repos by categories
-- (existing) Sync / commit / push / status across all, selected, or grouped repos
-- (new) **Project-repo bootstrap** — `qavor init <project-repo-url>` clones the project repo, generates the workspace pointer (`kind: workspaces`), then reads the project manifest and clones the rest. Resolves the cold-start problem without a separate bootstrap file.
-- (new) **Branch ops across repos** — create / switch / delete / list branches with a single selector; useful for feature work spanning repos.
-- (new) **Filtered selectors** — `--group`, `--repo`, `--tag`, plus state filters (`--dirty`, `--ahead`, `--behind`).
-- (new) **Aggregated status view** — single-screen summary: branch, ahead/behind, dirty files, last commit, group.
-- (new) **Parallel execution with per-repo progress** — bounded concurrency, structured output, no interleaved noise.
-- (new) **PR / tag / release helpers** — thin wrappers over `gh` (or equivalent) for create-PR-across-repos and coordinated tagging.
-- (new) **Stash & cleanup** — `qavor stash`, `qavor clean` (purge build artifacts, caches, optionally untracked).
-- (new) **Auth model** — explicitly delegate to user's git credential helpers / SSH; document SSH-vs-HTTPS choice.
+- ✅ Clone all project repos (`qavor git clone`).
+- ⬜ Group repos by categories (groups not yet modeled as selectors).
+- ✅ Sync / commit / push / status across all or `--only`-selected repos; ⬜ group selection.
+- ✅ **Project-repo bootstrap** — `qavor init <project-repo-url>` clones the project repo, generates the workspace pointer (`kind: workspaces`), then reads the project manifest and clones the rest. Resolves the cold-start problem without a separate bootstrap file.
+- ⬜ **Branch ops across repos** — create / switch / delete / list branches with a single selector.
+- 🟡 **Filtered selectors** — `--only <name...>` is implemented; `--group` / `--tag` and state filters (`--dirty` / `--ahead` / `--behind`) are planned.
+- ✅ **Aggregated status view** — `qavor git status` renders a live table: branch, ahead/behind, dirty files, last commit (optional GitHub visibility).
+- ✅ **Parallel execution with per-repo progress** — bounded concurrency, live per-repo rows, no interleaved noise.
+- ⬜ **PR / tag / release helpers** — thin wrappers over `gh` for create-PR-across-repos and coordinated tagging.
+- ⬜ **Stash & cleanup** — `qavor stash`, `qavor clean` (purge build artifacts, caches, optionally untracked).
+- ✅ **Auth model** — clone/push delegate to the user's git credential helper / SSH; remote profile sources reuse the same, with an optional bearer token for raw https/GitHub.
 
 ### 5.2 Repo Preparation (dependencies)
 
-- (existing) Prepare node / python / uv dependencies
-- (new) **Per-runtime steps in the manifest** — reserved lifecycle keys `runtime.<backend>.{ check_installed, install, run }` plus any number of **user-defined commands** (e.g. `prepare`, `update_libraries`, `lint`). Each command is discovered and run on demand as `qavor <command>`; qavor assumes no fixed command set. A typical `prepare` command encapsulates whatever the language toolchain needs (`uv sync`, `pnpm install --frozen-lockfile`, `cargo fetch`, …).
-- (new) **Profiles for reuse** — common prepare/run recipes (e.g. `python_application`, `node_application`) live in profile manifests and are referenced by services. A `profiles:` entry may reference a profile by name (local) or by a **remote source** — https / GitHub / git / `file://` — so a curated profile can be shared across workspaces; the remote profile is fetched, optionally sha256-pinned, cached under `~/.cache/qavor/`, and resolved by name at registry-build time (ADR-007). `--offline` uses the cache only; `--refresh` re-fetches.
-- (new) **Toolchain version management** — detect & delegate to `mise`/`asdf` if present; otherwise warn through `qavor doctor`.
-- (new) **Lockfile-aware skip** — hash declared lockfile inputs to skip `prepare` when unchanged (massive ergonomic win).
-- (new) **Code generation step** — model as a profile or a `prepare` step that runs `buf generate`, OpenAPI generators, etc., before `run`.
-- (new) **Pre-flight check** — `qavor doctor` verifies required tools, versions, container runtime, disk space, and runs each runtime backend's `check_installed`.
-- (new) **Custom hook scripts** — `pre_command` / `post_command` on the `hooks:` block, fired around every `qavor <command>` run with `QAVOR_COMMAND` set.
-- (new) **Parallel prepare across repos** with shared progress.
+- ✅ Prepare node / python / uv dependencies (via a `prepare` dynamic command).
+- ✅ **Per-runtime steps in the manifest** — reserved lifecycle keys `runtime.<backend>.{ check_installed, install, run }` plus any number of **user-defined commands** (e.g. `prepare`, `update_libraries`, `lint`). Each command is discovered and run on demand as `qavor <command>`; qavor assumes no fixed command set. A typical `prepare` command encapsulates whatever the language toolchain needs (`uv sync`, `pnpm install --frozen-lockfile`, `cargo fetch`, …).
+- ✅ **Profiles for reuse** — common prepare/run recipes (e.g. `python_application`, `node_application`) live in profile manifests and are referenced by services. A `profiles:` entry may reference a profile by name (local) or by a **remote source** — https / GitHub / git / `file://` — so a curated profile can be shared across workspaces; the remote profile is fetched, optionally sha256-pinned, cached under `~/.cache/qavor/`, and resolved by name at registry-build time (ADR-007). `--offline` uses the cache only; `--refresh` re-fetches.
+- ⬜ **Toolchain version management** — detect & delegate to `mise`/`asdf` if present; otherwise warn through `qavor doctor`.
+- ⬜ **Lockfile-aware skip** — hash declared lockfile inputs to skip `prepare` when unchanged. (An early implementation was removed; commands currently run unconditionally.)
+- ✅ **Code generation step** — expressible today as a dynamic command or a `$prepend` step before the inherited prepare steps.
+- 🟡 **Pre-flight check** — `qavor doctor` verifies git, writable state/cache dirs, and runs each service's `check_installed`; container-runtime and disk-space checks are warn-only / planned.
+- ✅ **Custom hook scripts** — `pre_command` / `post_command` on the `hooks:` block fire around each `qavor <command>` run with `QAVOR_COMMAND` set.
+- ✅ **Parallel prepare across repos** with shared live progress.
 
 ### 5.3 Backing Services (stateful dependencies)
 
@@ -127,82 +154,82 @@ A backing service is a `kind: service` for an externally provided dependency. It
 distinguished only by how it runs (typically `mode: docker-compose`) and by declaring an
 `env.publish` contract.
 
-- (existing) Bringup of postgres / mysql / kafka / etc.
-- (new) **Backed by docker compose** under the hood — `qavor` generates and owns the compose project (per ADR-005) from backing-service documents (`mode: docker-compose`).
-- (new) **Versioned and pinned** — image versions live in the manifest's `runtime.docker-compose.run.cmd` or in env (e.g. `POSTGRES_IMAGE: postgres:16.3`).
-- (new) **Health checks / readiness gating** — dependents only start once probes pass (configured on the runtime backend).
-- (new) **Connection info exposure** — the `env.publish:` map is the explicit contract of vars exposed to dependents (`POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_URL`).
-- (new) **Volumes, seed data, migrations** — declared via the runtime backend; one-shot scripts attach as `pre_run` / `post_run` hooks.
-- (new) **Reset / recreate / snapshot / restore** — `qavor backing reset postgres`, optional snapshot for fast rewinds.
-- (new) **Auto port allocation** — avoid conflicts when multiple workspaces coexist.
-- (new) **Multiple instances** — e.g., a `postgres-app` backing service and a separate `postgres-test` one.
+- ⬜ Bringup of postgres / mysql / kafka / etc. (the manifest shape exists; runtime execution is not built).
+- ⬜ **Backed by docker compose** under the hood — `qavor` generates and owns the compose project (per ADR-005) from backing-service documents (`mode: docker-compose`).
+- ⬜ **Versioned and pinned** — image versions live in the manifest's `runtime.docker-compose.run.cmd` or in env (e.g. `POSTGRES_IMAGE: postgres:16.3`).
+- ⬜ **Health checks / readiness gating** — dependents only start once probes pass (configured on the runtime backend).
+- 🟡 **Connection info exposure** — the `env.publish:` map is defined and *composes into dependents' env* today (`qavor resolve-env`); it is not yet populated by a running backing service.
+- 🟡 **Volumes, seed data, migrations** — `pre_run` / `post_run` hooks exist and fire for the native supervisor; compose-backed one-shots are planned.
+- ⬜ **Reset / recreate / snapshot / restore** — `qavor backing reset postgres`, optional snapshot for fast rewinds.
+- ⬜ **Auto port allocation** — avoid conflicts when multiple workspaces coexist.
+- ⬜ **Multiple instances** — e.g., a `postgres-app` backing service and a separate `postgres-test` one.
 
 ### 5.4 Service Execution
 
-- (existing) Run sets of services (python/node/go/...)
-- (existing) Build docker images for each service
-- (existing) Run the same services in containers
-- (new) **Process supervision** — start/stop/restart/status as first-class verbs; track PIDs in `.qavor/`.
-- (new) **Run modes** — `native` or `docker` per service, switchable per invocation (`--mode docker`).
-- (new) **Startup ordering from dep graph** — topological start over `require:` edges, parallel where possible.
-- (new) **Health/readiness probes** — HTTP, TCP, command — gate dependents and report status (configured per runtime backend).
-- (new) **Log aggregation** — colored, prefixed tail of all running services; `qavor logs <service>` for one.
-- (new) **Hot reload hooks** — declarative `watch:` patterns + restart command (delegate to native watchers, not reinvent).
-- (new) **Debug mode** — port-forward debugger ports, set `*_DEBUG` env, attach instructions.
-- (new) **Graceful shutdown** — SIGTERM, configurable grace period, then SIGKILL.
-- (new) **Container build conventions** — image name templating (`{registry}/{repo}/{service}:{git_sha}`) configured via env (`IMAGE_NAME`); BuildKit cache reuse; optional registry push.
-- (new) **Selective run** — by group, by service, by tag, with `--with-deps`/`--no-deps` toggles.
+- 🟡 Run services natively (✅ one per `qavor up`); running *sets* with graph ordering is planned.
+- ⬜ Build docker images for each service.
+- ⬜ Run the same services in containers (`--mode docker` returns "deferred").
+- ✅ **Process supervision** — `up` / `down` / `logs` / `ps` as first-class verbs; PIDs + metadata tracked in `.qavor/state/`. (`restart` not yet a distinct verb.)
+- 🟡 **Run modes** — `native` is implemented; `docker` per-service is planned.
+- ⬜ **Startup ordering from dep graph** — topological start over `require:` edges, parallel where possible.
+- ⬜ **Health/readiness probes** — HTTP, TCP, command — gate dependents and report status.
+- 🟡 **Log aggregation** — `qavor logs <service>` tails/follows one service's rotated log; multi-service prefixed aggregation is planned.
+- ⬜ **Hot reload hooks** — declarative `watch:` patterns + restart command.
+- ⬜ **Debug mode** — port-forward debugger ports, set `*_DEBUG` env, attach instructions.
+- ✅ **Graceful shutdown** — SIGTERM to the process group, configurable grace, then SIGKILL.
+- ⬜ **Container build conventions** — image name templating, BuildKit cache reuse, optional registry push.
+- 🟡 **Selective run** — `--only` selects services for dynamic commands; graph-aware `--with-deps` / `--no-deps` and group/tag selection are planned.
 
 ### 5.5 Environment Variable Management
 
-- (existing) Per-service and per-backing-dep env vars
-- (existing) YAML-defined env
-- (existing) `.env` overrides
-- (existing) Platform-specific (native vs docker)
-- (new) **Layered env block** — every service / profile manifest has `env: { common, native, docker }`. `common` always applies; `native` or `docker` is layered on top depending on the active mode.
-- (new) **Publish contract** — a backing service adds `env.publish:`, the only vars that flow to dependents.
-- (new) **Explicit precedence** — defined in §6 below; identical for every service at every layer.
-- (new) **Interpolation & references** — `${POSTGRES_HOST}`, `${secret:DB_PASSWORD}`. Cross-service references use the backing service's `publish` map rather than ad-hoc lookups.
-- (new) **Validation / schema** — `required: true`, types, regex; fail fast at start (long-form `envSpec`).
-- (new) **Profiles** — reusable env layered below the manifest's own env; chainable.
-- (new) **Inspect resolved env** — `qavor env <service>` shows fully-resolved values with provenance (which file/layer set each var).
-- (new) **Secrets handling** — pluggable provider interface (1Password, sops, vault, env-only); never check secrets into manifests.
+- ✅ Per-service and per-backing-dep env vars.
+- ✅ YAML-defined env.
+- ✅ `.env` overrides (incl. `.env.native` / `.env.docker` / `.env.container`).
+- ✅ Platform-specific (native vs docker) layers.
+- ✅ **Layered env block** — every service / profile manifest has `env: { common, native, docker }`. `common` always applies; `native` or `docker` is layered on top depending on the active mode.
+- ✅ **Publish contract** — a backing service adds `env.publish:`, the only vars that flow to dependents (composed via `qavor resolve-env`).
+- ✅ **Explicit precedence** — defined in §6 below; identical for every service at every layer, with provenance.
+- 🟡 **Interpolation & references** — `${VAR}` interpolation against prior layers and process env is implemented; `${secret:...}` is reserved and fails closed.
+- ✅ **Validation / schema** — long-form `envSpec` with `required: true` / `secret: true` fails fast with provenance. (`type` / `pattern` validation is accepted in schema; enforcement is minimal.)
+- ✅ **Profiles** — reusable env layered below the manifest's own env; chainable.
+- ✅ **Inspect resolved env** — `qavor env <service>` (and `qavor resolve-env`) show fully-resolved values with provenance (which file/layer set each var).
+- ⬜ **Secrets handling** — pluggable provider interface (1Password, sops, vault, env-only). Reserved; not built.
 
 ### 5.6 Cross-Service Dependencies
 
-- (existing) Services declare dependencies on other services and backing deps
-- (existing) Env vars from deps propagate across the chain (via a backing service's `publish`)
-- (new) **Cross-repo dependencies** — service in repo A can require a service in repo B by name (`{ service: token-issuer }`); resolved through the workspace registry.
-- (new) **Cycle detection** at validation time with a clear error.
-- (new) **Optional/conditional deps** — gated by profile, mode, or platform via `optional:` / `condition:`.
-- (new) **"Wait for" semantics** tied to readiness probes via `waitFor: ready`.
-- (new) **Graph visualization** — `qavor graph` outputs mermaid/dot for onboarding & debugging.
-- (new) **Group-level dependencies** — `frontend` group depends on `auth-stack` group.
+- ✅ Services declare dependencies on other services and backing deps (`require:`).
+- ✅ Env vars from deps propagate across the chain (dep env, and a backing service's `publish` contract) during composition.
+- ✅ **Cross-repo dependencies** — a service can require another by name (`{ service: token-issuer }`); resolved through the workspace registry.
+- 🟡 **Cycle detection** — profile cycles are detected with a clear error; a full `require:`-graph cycle check at validation time is planned alongside runtime orchestration.
+- 🟡 **Optional/conditional deps** — `optional:` is honored in env composition; `condition:` gating is planned.
+- ⬜ **"Wait for" semantics** tied to readiness probes via `waitFor: ready`.
+- ⬜ **Graph visualization** — `qavor graph` outputs mermaid/dot for onboarding & debugging.
+- ⬜ **Group-level dependencies** — `frontend` group depends on `auth-stack` group.
 
 ### 5.7 Proposed New Categories
 
 **A. Workspace & Bootstrap** — fills the cold-start gap.
-- `qavor init <project-repo-url-or-path>` — clones the project repo, writes the `kind: workspaces` pointer, then clones the listed repos.
-- Multiple workspaces side-by-side; switch via `qavor workspace use <name>`.
+- ✅ `qavor init <project-repo-url-or-path>` — clones the project repo, writes the `kind: workspaces` pointer, then clones the listed repos. ✅ single-repo (`standalone`) projects need no init.
+- ⬜ Multiple workspaces side-by-side; switch via `qavor workspace use <name>` (only `qavor workspace info` exists today).
 
 **B. Lifecycle Hooks & Custom Tasks**
-- `pre`/`post` hooks on key verbs via the `hooks:` block on repo / service manifests.
-- User-defined tasks declared in a `kind: profile` or alongside services and runnable as `qavor run <name>:<task>` (post-MVP).
+- ✅ `pre_command` / `post_command` (and `pre_run` / `post_run`) hooks via the `hooks:` block.
+- ✅ User-defined tasks declared alongside services (`runtime.native.<command>`) and runnable directly as `qavor <command>` — no separate `run <name>:<task>` needed.
 
 **C. Diagnostics**
-- `qavor doctor` (toolchain prereqs, runtime checks, runs each runtime's `check_installed`).
-- `qavor status` (aggregated repo + service health dashboard).
-- `qavor explain <service>` (resolved config, env, deps, run command — with provenance).
+- ✅ `qavor doctor` (toolchain prereqs, writable dirs, runs each service's `check_installed`).
+- 🟡 Aggregated status: `qavor git status` (repos) and `qavor ps` (services) exist; a single combined dashboard is planned.
+- ⬜ `qavor explain <service>` (resolved config, env, deps, run command). `qavor resolve-manifest` and `qavor env` cover much of this today.
 
 **D. Logging & Observability (lightweight)**
-- Centralized tail with prefixes; rotation; per-service log files.
-- Optional structured-log pretty-printing.
+- 🟡 Per-service log files with rotation and `qavor logs -f` tail; multi-service prefixed aggregation is planned.
+- ✅ Structured-log pretty-printing (`pino-pretty` on TTY; JSON via `--json`).
 
 **E. Documentation Generation**
-- `qavor docs` renders the workspace catalog (repos, services, backing deps, env contracts) as markdown — great for onboarding READMEs.
+- ⬜ `qavor docs` renders the workspace catalog as markdown.
 
 **F. Extensibility (post-MVP)**
-- Plugin interface for new language adapters (delivered as profile bundles), secret providers, container backends (Podman/OrbStack).
+- 🟡 Language adapters as **profile bundles** are supported (incl. remote profiles); ⬜ plugin interface, secret providers, and alternate container backends (Podman/OrbStack) remain planned.
 
 ---
 
@@ -345,16 +372,24 @@ env:
 
 ---
 
-## 8. CLI Surface (illustrative)
+## 8. CLI Surface
 
-- `qavor init <project-repo-url-or-path>`, `qavor workspace ...`
-- `qavor git clone | sync | status | commit | push | branch | pr` (all accept selectors)
+Implemented today:
+
+- `qavor init <project-repo-url-or-path>`, `qavor workspace info`, `qavor discover`
+- `qavor git clone | sync | status | commit | push` (all accept `--only`)
 - `qavor <command>` (any manifest-defined runtime command, e.g. `qavor prepare`, `qavor update_libraries`), `qavor commands` (list them), `qavor doctor`
-- `qavor up`, `qavor down`, `qavor restart`, `qavor logs`, `qavor ps`
-- `qavor build`, `qavor run`
+- `qavor up`, `qavor down`, `qavor logs`, `qavor ps`
+- `qavor validate`, `qavor manifests`, `qavor resolve-manifest`
+- `qavor env <service>`, `qavor resolve-env --only <service>`
+
+Planned (see [mvp-tasks.md](./mvp-tasks.md#roadmap-not-yet-implemented)):
+
+- `qavor git branch | pr`, coordinated tag/release, `qavor stash`, `qavor clean`
+- `qavor restart`, `qavor build`, `qavor run` sets with graph ordering, `--mode docker`
 - `qavor backing up|down|reset|snapshot|restore` (backing services)
-- `qavor env <service>`, `qavor explain <service>`, `qavor graph`
-- `qavor docs`
+- `qavor explain <service>`, `qavor graph`, `qavor docs`
+- `qavor workspace use <name>` (multiple side-by-side workspaces)
 
 ---
 

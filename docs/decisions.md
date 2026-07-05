@@ -41,7 +41,7 @@ Format: ADR-NNN, status, context, decision, consequences. Each can be revisited;
   - Testing: Node's built-in `node:test` runner with `tsx` for TS execution; promote to `vitest` only if richer fixtures justify it.
   - Linting & formatting: `eslint` + `typescript-eslint` + `prettier`.
   - Build: `tsup` (esbuild under the hood) emits an ESM CLI bundle as the SEA input.
-- **Distribution:** A Single Executable Application built per platform via Node's SEA facility for `darwin/arm64`, `darwin/amd64`, `linux/amd64`, `linux/arm64`. Homebrew tap and a `curl`-install script consume those artifacts. An `npm i -g @<org>/qavor` install path is also published for users who already have a Node runtime.
+- **Distribution:** Published to npm as **`qavor`** (`npm i -g qavor`) via GitHub Actions Trusted Publishing (OIDC) — this is the live install path today. The per-platform Single Executable Application (SEA) build for `darwin/arm64`, `darwin/amd64`, `linux/amd64`, `linux/arm64`, plus the Homebrew tap and `curl`-install script, remain **planned** and are not yet shipped. (The decision stands; only the SEA/brew artifacts are outstanding.)
 - We accept a slightly larger distribution payload (the embedded Node runtime) in exchange for the ergonomic and ecosystem benefits above.
 
 ---
@@ -206,7 +206,7 @@ This is an **additive carve-out**, not a reversal: multi-repo bootstrap still fo
 
 | ADR | Topic | Decision |
 |---|---|---|
-| 001 | Implementation language | **Node.js (TypeScript)**, Node 26+, distributed as SEA |
+| 001 | Implementation language | **Node.js (TypeScript)**, Node 26+, shipped on npm as `qavor` (SEA build planned) |
 | 002 | Process supervision | Own minimal native supervisor + compose for docker / docker-compose |
 | 003 | Container runtime | **Docker only at v0**; pluggable later |
 | 004 | Bootstrap | **`qavor init <project-repo-source>`** — project repo is the seed; `kind: workspaces` pointer is generated |

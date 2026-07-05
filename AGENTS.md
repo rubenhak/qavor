@@ -35,7 +35,17 @@ Read these before changing anything non-trivial. When the docs and code disagree
 
 ## 3. Current repo state
 
-Pre-implementation. Today the repo contains only documentation and JSON Schemas. There is no `src/`, no `package.json`, no tests yet. When you create them, follow the layout and tooling locked below.
+**MVP shipped** (published to npm as `qavor`, v0.3.x). `src/`, `package.json`,
+and a full `test/` suite exist and the CI gate is green. Implemented: workspace
+bootstrap (`init`, single-repo + multi-repo), the four-kind manifest model with
+validation, git fan-out (`clone`/`sync`/`status`/`commit`/`push`), dynamic
+manifest commands, env composition (incl. `require:` deps and `env.publish`
+contracts), profiles (local + remote, chaining, merge directives), and the
+native supervisor (`up`/`down`/`logs`/`ps`). Not yet built: container /
+`docker-compose` execution, backing-service bring-up, `${secret:...}`, the
+runtime dependency graph, and group/tag selectors. See the
+[README implementation status](README.md#implementation-status) and
+[mvp-tasks.md](docs/mvp-tasks.md) for the authoritative, current breakdown.
 
 ---
 

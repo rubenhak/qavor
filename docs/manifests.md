@@ -13,6 +13,17 @@ All manifests share three conventions:
   `container` is added on top depending on run mode. Workspace `.env`, user
   `.env.local`, and `--env KEY=VAL` continue to override on top of that.
 
+> **Runtime-support status.** Every manifest shape below validates against the
+> schemas, but not all of it executes yet. **Runs today:** the `native` runtime
+> (`qavor up`), dynamic commands (`qavor <command>`), profiles (local + remote,
+> chaining, merge directives), `require:`-dependency env composition, and the
+> `env.publish` contract (composed into dependents by `qavor resolve-env`).
+> **Not yet executed:** `mode: docker` / `mode: docker-compose` bring-up
+> (backing services validate and their published contract composes, but qavor
+> does not yet start their compose project), and `${secret:...}` interpolation,
+> which is **reserved and fails closed**. Use plain env for now. See the
+> [README implementation status](../README.md#implementation-status).
+
 A typical workspace on disk looks like this:
 
 ```
