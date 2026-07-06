@@ -130,11 +130,22 @@ If the same command (e.g. `prepare`, `build`, `test`) repeats across services, f
 ## Discovering commands
 
 ```bash
-qavor commands            # table: COMMAND | DESCRIPTION | SERVICES (shadowed names flagged)
+qavor commands            # one block per command: name, description, wrapped service list (shadowed names flagged)
 qavor commands --json     # { "commands": [ { command, description, services[], allServices, registered } ] }
 ```
 
-Human output collapses the SERVICES column to `all services (N)` when every service in the workspace declares the command (instead of spelling out every name) — this is what you saw as a wall of repeated service names before this feature; check `allServices` in JSON for the same signal. `description` is `null` when no declaring service writes the command in the `{ description, operations }` form; when more than one service disagrees, the first one in alphabetical service-name order wins (services sharing a command via a profile normally agree, since they inherit the same text).
+Human output is one block per command, not a table:
+
+```
+▸ build — Build the library.
+    Services (14): helper-backend, helper-cache, helper-data-store,
+    helper-easy-data-store, helper-external-services, helper-logic-processor,
+    helper-mongodb, helper-mysql, helper-rabbitmq, helper-redis,
+    helper-rule-engine, helper-websocket-client, helper-websocket-server,
+    helpers
+```
+
+The `Services` line collapses to `Services (N): all services` when every service in the workspace declares the command (check `allServices` in JSON for the same signal); otherwise it wraps the full list at ~80 columns rather than spelling it out on one unreadable line. `description` is `null` when no declaring service writes the command in the `{ description, operations }` form (the block then has no `— …` suffix); when more than one service disagrees, the first one in alphabetical service-name order wins (services sharing a command via a profile normally agree, since they inherit the same text).
 
 `registered: false` (or a `(shadowed)` tag) means the name collides with a built-in or is an unsafe token — it exists in manifests but isn't reachable as `qavor <name>`; rename it.
 

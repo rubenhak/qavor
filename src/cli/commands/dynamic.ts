@@ -9,7 +9,6 @@ import { runFanOut } from '../../util/concurrency.js';
 import { RuntimeFailure, UserError } from '../../util/exit-codes.js';
 import { emit, emitJson, getLogger } from '../../util/logger.js';
 import { colorEnabled, palette } from '../../util/style.js';
-import { fit, truncate } from '../live-view.js';
 import { inheritRootOptions, resolveExecutionPlan } from '../options.js';
 import { loadServicesContext } from '../services-context.js';
 import { STATIC_COMMAND_NAMES } from '../static-commands.js';
@@ -194,16 +193,41 @@ async function runDynamicCommand(
   }
 }
 
-/** Cap on the pretty-printed DESCRIPTION column; `--json` always carries the full text. */
-const MAX_DESCRIPTION_WIDTH = 60;
+/** Hanging indent for a command block's `Services` line and its wrapped continuations. */
+const SERVICES_INDENT = '    ';
+/** Wrap width for the `Services` line; matches the terminal, capped for readability. */
+const MAX_LINE_WIDTH = 80;
+
+/**
+ * Word-wrap `${label}${items joined by ", "}` to `maxWidth` columns, every line
+ * (including the first) prefixed with {@link SERVICES_INDENT}. Wraps only at
+ * item boundaries — a single service name is never split mid-word.
+ */
+function wrapServicesLine(label: string, items: string[], maxWidth: number): string[] {
+  const words = `${label}${items.join(', ')}`.split(' ');
+  const lines: string[] = [];
+  let current = SERVICES_INDENT;
+  for (const word of words) {
+    const candidate = current === SERVICES_INDENT ? current + word : `${current} ${word}`;
+    if (candidate.length > maxWidth && current !== SERVICES_INDENT) {
+      lines.push(current);
+      current = SERVICES_INDENT + word;
+    } else {
+      current = candidate;
+    }
+  }
+  lines.push(current);
+  return lines;
+}
 
 /**
  * `qavor commands` — list the dynamic commands declared across the workspace,
  * their manifest-declared description (if any), and which services declare
- * each. A command that collides with a built-in (or is an unsafe token) is
- * flagged as shadowed: it is reachable only by editing the manifest to rename
- * it. Also the primary way for a skill to discover, at a glance, what a
- * workspace can run and what each command is for — hence `--json`.
+ * each, one block per command. A command that collides with a built-in (or is
+ * an unsafe token) is flagged as shadowed: it is reachable only by editing the
+ * manifest to rename it. Also the primary way for a skill to discover, at a
+ * glance, what a workspace can run and what each command is for — hence
+ * `--json`.
  */
 export function registerCommandsList(program: Command): void {
   program
@@ -237,33 +261,22 @@ export function registerCommandsList(program: Command): void {
       }
 
       const c = palette(colorEnabled());
-      const HEADER_COMMAND = 'COMMAND';
-      const HEADER_DESCRIPTION = 'DESCRIPTION';
-      const HEADER_SERVICES = 'SERVICES';
+      const marker = colorEnabled() ? '▸' : '>';
+      const width = Math.min(process.stdout.columns || MAX_LINE_WIDTH, MAX_LINE_WIDTH);
 
-      const nameCells = commands.map((cmd) =>
-        cmd.registered ? cmd.command : `${cmd.command} (shadowed)`,
-      );
-      const descCells = commands.map((cmd) =>
-        truncate(cmd.description ?? '(no description)', MAX_DESCRIPTION_WIDTH),
-      );
-      const commandW = Math.max(HEADER_COMMAND.length, ...nameCells.map((s) => s.length));
-      const descW = Math.max(HEADER_DESCRIPTION.length, ...descCells.map((s) => s.length));
-
-      emit(
-        c.bold(
-          `${fit(HEADER_COMMAND, commandW)}  ${fit(HEADER_DESCRIPTION, descW)}  ${HEADER_SERVICES}`,
-        ),
-      );
       commands.forEach((cmd, i) => {
-        const name = fit(nameCells[i] ?? '', commandW);
-        const desc = fit(descCells[i] ?? '', descW);
-        const descCell = cmd.description ? desc : c.dim(desc);
-        const servicesText = cmd.allServices
-          ? `all services (${cmd.services.length})`
-          : cmd.services.join(', ');
-        const servicesCell = cmd.allServices ? c.dim(servicesText) : servicesText;
-        emit(`${name}  ${descCell}  ${servicesCell}`);
+        if (i > 0) emit('');
+        const nameTag = cmd.registered ? cmd.command : `${cmd.command} ${c.dim('(shadowed)')}`;
+        const header = cmd.description
+          ? `${c.cyan(marker)} ${c.bold(nameTag)} ${c.dim('—')} ${cmd.description}`
+          : `${c.cyan(marker)} ${c.bold(nameTag)}`;
+        emit(header);
+
+        const label = `Services (${cmd.services.length}): `;
+        const items = cmd.allServices ? ['all services'] : cmd.services;
+        for (const line of wrapServicesLine(label, items, width)) {
+          emit(c.dim(line));
+        }
       });
 
       if (commands.some((cmd) => !cmd.registered)) {
