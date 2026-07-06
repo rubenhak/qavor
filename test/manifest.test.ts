@@ -258,6 +258,36 @@ test('validator: a described command with a non-string description is rejected',
   }
 });
 
+test('validator: check_installed and install also accept the described ({ description, operations }) form', async () => {
+  const dir = await makeTempDir();
+  try {
+    const file = await writeYaml(
+      dir,
+      'qavor.yaml',
+      [
+        'kind: service',
+        'name: describedlifecycle',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    check_installed:',
+        '      description: "Check pnpm is installed."',
+        '      operations:',
+        '        cmd: "pnpm --version"',
+        '    install:',
+        '      description: "Install pnpm."',
+        '      operations:',
+        '        cmd: "echo install pnpm first"',
+        '',
+      ].join('\n'),
+    );
+    const docs = await loadManifestFile(file);
+    assert.equal(validateDocument(docs[0]!).ok, true);
+  } finally {
+    await cleanup(dir);
+  }
+});
+
 test('validator: profile-merge directive on a command passes', async () => {
   const dir = await makeTempDir();
   try {

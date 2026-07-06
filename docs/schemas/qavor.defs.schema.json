@@ -145,12 +145,12 @@
       ]
     },
     "runtimeBackend": {
-      "description": "Runtime backend definition. A small set of keys is reserved for the start lifecycle: `enabled` (gate), `check_installed` + `install` (installation — install runs only when check_installed fails), and `run` (the long-lived process started by `qavor up`; `run` takes a single step). Every *other* key is a user-defined command — a named shell step (or list of steps) discovered and run on demand by `qavor <command>` (e.g. `prepare`, `update_libraries`, `lint`, `test`, `migrate`), optionally written as a `runtimeDescribedCommand` object (`description` + `operations`) to document what it does. qavor assumes no fixed command set: any command declared here is runnable, fanned out across the services that define it. Each command accepts a single step or a list of steps run in declaration order; the first non-zero exit aborts the rest. `check_installed`, `install`, and user-defined commands additionally accept a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) to extend rather than replace a step list inherited from a referenced profile; `run` does not (it is a single step).",
+      "description": "Runtime backend definition. A small set of keys is reserved for the start lifecycle: `enabled` (gate), `check_installed` + `install` (installation — install runs only when check_installed fails), and `run` (the long-lived process started by `qavor up`; `run` takes a single step). Every *other* key is a user-defined command — a named shell step (or list of steps) discovered and run on demand by `qavor <command>` (e.g. `prepare`, `update_libraries`, `lint`, `test`, `migrate`). `check_installed`, `install`, and every user-defined command may be written as a bare step/list, or as a `runtimeDescribedCommand` object (`description` + `operations`) to document what it does; `run` cannot (it is always a single bare step). qavor assumes no fixed command set: any command declared here is runnable, fanned out across the services that define it. Each command accepts a single step or a list of steps run in declaration order; the first non-zero exit aborts the rest. `check_installed`, `install`, and user-defined commands additionally accept a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) to extend rather than replace a step list inherited from a referenced profile — either bare, or nested under `operations` when using the described form.",
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean", "default": false },
-        "check_installed": { "$ref": "#/$defs/runtimeStepOrMerge" },
-        "install": { "$ref": "#/$defs/runtimeStepOrMerge" },
+        "check_installed": { "$ref": "#/$defs/runtimeCommandValue" },
+        "install": { "$ref": "#/$defs/runtimeCommandValue" },
         "run": { "$ref": "#/$defs/runtimeStepOrList" }
       },
       "additionalProperties": { "$ref": "#/$defs/runtimeCommandValue" }

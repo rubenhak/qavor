@@ -38,6 +38,19 @@ function isDescribedCommand(value: unknown): value is DescribedCommand {
   );
 }
 
+/**
+ * Normalize a raw `runtime.native.<key>` value into its ordered steps,
+ * transparently unwrapping the `{ description, operations }` form to its
+ * `operations`. Shared by every reader of a backend key that accepts the
+ * described form — dynamic commands via {@link serviceCommandSteps} below, and
+ * `check_installed` / `install` (read directly off the resolved manifest by
+ * `doctor.ts`, since they're reserved keys rather than dynamic commands).
+ */
+export function normalizeCommandValue(value: unknown): RuntimeStep[] {
+  const steps = isDescribedCommand(value) ? value.operations : value;
+  return normalizeSteps(steps as RuntimeStepOrList | undefined);
+}
+
 type BackendRecord = Record<string, unknown>;
 
 /**
@@ -73,9 +86,7 @@ export function serviceCommandSteps(service: ServiceManifest, command: string): 
   if (RESERVED_BACKEND_KEYS.has(command)) return [];
   const backend = nativeBackend(service);
   if (!backend) return [];
-  const value = backend[command];
-  const steps = isDescribedCommand(value) ? value.operations : value;
-  return normalizeSteps(steps as RuntimeStepOrList | undefined);
+  return normalizeCommandValue(backend[command]);
 }
 
 /**
