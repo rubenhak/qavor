@@ -38,7 +38,7 @@ These come from the implementation, not just the schema. Get them wrong and the 
 
 ## Step value shapes
 
-A command value is either a **single step** or a **list of steps**:
+A command value is a **single step**, a **list of steps**, or a **described command** that wraps either in `operations` alongside a `description`:
 
 ```yaml
 runtime:
@@ -53,6 +53,14 @@ runtime:
     prepare:
       - cmd: "pnpm install"
       - cmd: "pnpm run codegen"
+
+    # Described form — same step/list shapes, nested under `operations`,
+    # with a one-line `description` alongside
+    update_libraries:
+      description: "Bump dependencies and re-lock."
+      operations:
+        - cmd: "npx npm-check-updates -u"
+        - cmd: "pnpm install"
 ```
 
 A step object supports:
@@ -67,6 +75,31 @@ A step object supports:
 ### Environment available to steps
 
 Each step runs with the service's fully composed env (the layered `env.common` / `env.native` / `.env` chain) **plus** `QAVOR_COMMAND=<name>` so a step or hook can branch on which command is running.
+
+## Describing a command
+
+Write the command's value as an object with `description` + `operations` instead of a bare step/list:
+
+```yaml
+runtime:
+  native:
+    enabled: true
+    build:
+      description: "Compile the service for production."
+      operations:
+        cmd: "npm run build"
+    test:
+      description: "Run the unit test suite."
+      operations:
+        - cmd: "rm -rf logs"
+        - cmd: "npm test"
+```
+
+`operations` is **required** whenever you use this form and accepts the exact same shapes a bare command value would: a single step, a list of steps, or (inside a profile) a merge directive (`$append`/`$prepend`/`$replace`/`$unset`). `description` is optional and **purely documentation** — it has no effect on what runs. It is surfaced in two places:
+- `qavor commands` (and its `--json` form) — see [Discovering commands](#discovering-commands).
+- `qavor <command> --help`'s one-line summary, plus a `Declared by: <services>` line.
+
+Because the whole `{ description, operations }` object lives at the command's own key under `runtime.native`, it merges like any other backend key when a service references a profile: a profile can set a shared description on a command it defines, and a service that overrides just `operations` (own `{ operations: [...] }`, no `description` key) still inherits the profile's description. Add a description whenever you author a non-obvious command — it is the main way a human (or a skill introspecting the workspace via `qavor commands --json`) discovers what a command does without opening the manifest. Skip it for self-explanatory names (`build`, `test`) if you'd rather keep the bare step/list form.
 
 ### Hooks around commands
 
@@ -86,8 +119,9 @@ hooks:
 2. **Confirm the backend.** The command goes under `runtime.native`. If the service has no `native` backend yet, add one with at least `enabled: true`.
 3. **Pick a safe, non-shadowing name** (see constraints 2 and 3).
 4. **Write the step(s).** Prefer the single-step form unless you genuinely need ordered phases. Use `cwd` for monorepo sub-package paths. Keep steps idempotent (constraint 5).
-5. **Don't rely on arg passthrough** (constraint 4). If the command is parameterized, read an env var and document the `--env` invocation.
-6. **Validate:** run `qavor validate` (catches schema errors) and `qavor commands` (confirms the new name is discovered and **not** shadowed).
+5. **Wrap it as `{ description, operations }`** (see [Describing a command](#describing-a-command)) unless the name is already self-explanatory (`build`, `test`) — the description is what shows up in `qavor commands` and `--help`.
+6. **Don't rely on arg passthrough** (constraint 4). If the command is parameterized, read an env var and document the `--env` invocation.
+7. **Validate:** run `qavor validate` (catches schema errors) and `qavor commands` (confirms the new name is discovered, described, and **not** shadowed).
 
 ### Reusing a command across many services
 
@@ -96,11 +130,15 @@ If the same command (e.g. `prepare`, `build`, `test`) repeats across services, f
 ## Discovering commands
 
 ```bash
-qavor commands            # table: COMMAND | SERVICES (shadowed names flagged)
-qavor commands --json     # { "commands": [ { command, services[], registered } ] }
+qavor commands            # table: COMMAND | DESCRIPTION | SERVICES (shadowed names flagged)
+qavor commands --json     # { "commands": [ { command, description, services[], allServices, registered } ] }
 ```
 
+Human output collapses the SERVICES column to `all services (N)` when every service in the workspace declares the command (instead of spelling out every name) — this is what you saw as a wall of repeated service names before this feature; check `allServices` in JSON for the same signal. `description` is `null` when no declaring service writes the command in the `{ description, operations }` form; when more than one service disagrees, the first one in alphabetical service-name order wins (services sharing a command via a profile normally agree, since they inherit the same text).
+
 `registered: false` (or a `(shadowed)` tag) means the name collides with a built-in or is an unsafe token — it exists in manifests but isn't reachable as `qavor <name>`; rename it.
+
+This is also the command a **skill** (or any tool introspecting a workspace) should call first to learn what it can run and what each command is for, before reaching for `qavor <command> --help` on a specific name.
 
 ## Running commands
 
@@ -139,16 +177,26 @@ runtime:
 
     # dynamic commands ↓
     prepare:
-      cmd: "pnpm install"
+      description: "Install dependencies."
+      operations:
+        cmd: "pnpm install"
     build:
-      cmd: "pnpm run build"
+      description: "Compile the service for production."
+      operations:
+        cmd: "pnpm run build"
     lint:
-      cmd: "pnpm run lint"
+      description: "Run the linter."
+      operations:
+        cmd: "pnpm run lint"
     test:
-      - cmd: "rm -rf logs"
-      - cmd: "pnpm test"
+      description: "Run the unit test suite."
+      operations:
+        - cmd: "rm -rf logs"
+        - cmd: "pnpm test"
     migrate:
-      cmd: 'pnpm run db:migrate -- --env "${MIGRATE_ENV:-dev}"'
+      description: "Apply pending database migrations."
+      operations:
+        cmd: 'pnpm run db:migrate -- --env "${MIGRATE_ENV:-dev}"'
 
 mode: native
 ```
@@ -156,7 +204,7 @@ mode: native
 Then:
 
 ```bash
-qavor commands                 # shows: build, lint, migrate, prepare, test → api
+qavor commands                 # shows build/lint/migrate/prepare/test → api, each with its description
 qavor prepare                  # pnpm install across the workspace
 qavor build --only api         # build just api
 qavor migrate --env MIGRATE_ENV=staging
@@ -167,6 +215,7 @@ qavor test --serial --verbose  # watch the test output live
 
 - [ ] Command placed under `runtime.native` (not `docker` / `docker-compose`).
 - [ ] Name is a safe token and doesn't collide with a built-in (`qavor commands` shows it without `(shadowed)`).
+- [ ] The command is wrapped as `{ description, operations }`, unless the name is self-explanatory.
 - [ ] Not depending on positional arg passthrough; parameterize via `--env`.
 - [ ] Steps are idempotent (they run every time, no caching).
 - [ ] `cwd` is set for sub-package paths in monorepos.
