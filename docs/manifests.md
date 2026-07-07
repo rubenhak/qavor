@@ -178,17 +178,28 @@ runtime:
       cmd: |
         echo "UV is not installed. Install it first and try again."
     # `prepare` is a user-defined command, not a reserved key. Any key here other
-    # than enabled/check_installed/install/run is a command, discovered and run on
-    # demand as `qavor <key>` (here `qavor prepare`). qavor assumes no fixed set.
+    # than enabled/check_installed/install/run is a command, discovered and run
+    # on demand as `qavor <key>` (here `qavor prepare`). qavor assumes no fixed
+    # set. Wrap it as `{ description, operations }` instead of a bare step/list
+    # to document what it does — surfaced by `qavor commands` and by
+    # `qavor <command> --help`. `operations` accepts the same shapes a bare
+    # command value would (single step, list of steps, or a profile-merge
+    # directive); a service referencing this profile inherits the description
+    # unless it overrides it.
     prepare:
-      cmd: "uv sync --all-extras"
+      description: "Sync Python dependencies via uv."
+      operations:
+        cmd: "uv sync --all-extras"
     # another user-defined command — run on demand as `qavor update_libraries`.
-    # any command may be written as a list of steps run in sequence — each entry
-    # is a full step (own cmd/cwd/env/shell) and the first non-zero exit aborts
-    # the rest. (`run` is the exception: it takes a single command.)
+    # `operations` may be a list of steps run in sequence — each entry is a full
+    # step (own cmd/cwd/env/shell) and the first non-zero exit aborts the rest.
+    # (`run` is the exception: it takes a single command, and is not describable
+    # this way.)
     update_libraries:
-      - cmd: "uv lock --upgrade"
-      - cmd: "uv sync --all-extras"
+      description: "Upgrade the uv lockfile and re-sync."
+      operations:
+        - cmd: "uv lock --upgrade"
+        - cmd: "uv sync --all-extras"
     # `run` is reserved: the long-lived process started by `qavor up`.
     run:
       cmd: "uv run uvicorn app.main:app --port ${PORT}"
@@ -371,17 +382,28 @@ runtime:
       cmd: |
         echo "UV is not installed. Install it first and try again."
     # `prepare` is a user-defined command, not a reserved key. Any key here other
-    # than enabled/check_installed/install/run is a command, discovered and run on
-    # demand as `qavor <key>` (here `qavor prepare`). qavor assumes no fixed set.
+    # than enabled/check_installed/install/run is a command, discovered and run
+    # on demand as `qavor <key>` (here `qavor prepare`). qavor assumes no fixed
+    # set. Wrap it as `{ description, operations }` instead of a bare step/list
+    # to document what it does — surfaced by `qavor commands` and by
+    # `qavor <command> --help`. `operations` accepts the same shapes a bare
+    # command value would (single step, list of steps, or a profile-merge
+    # directive); a service referencing this profile inherits the description
+    # unless it overrides it.
     prepare:
-      cmd: "uv sync --all-extras"
+      description: "Sync Python dependencies via uv."
+      operations:
+        cmd: "uv sync --all-extras"
     # another user-defined command — run on demand as `qavor update_libraries`.
-    # any command may be written as a list of steps run in sequence — each entry
-    # is a full step (own cmd/cwd/env/shell) and the first non-zero exit aborts
-    # the rest. (`run` is the exception: it takes a single command.)
+    # `operations` may be a list of steps run in sequence — each entry is a full
+    # step (own cmd/cwd/env/shell) and the first non-zero exit aborts the rest.
+    # (`run` is the exception: it takes a single command, and is not describable
+    # this way.)
     update_libraries:
-      - cmd: "uv lock --upgrade"
-      - cmd: "uv sync --all-extras"
+      description: "Upgrade the uv lockfile and re-sync."
+      operations:
+        - cmd: "uv lock --upgrade"
+        - cmd: "uv sync --all-extras"
     # `run` is reserved: the long-lived process started by `qavor up`.
     run:
       cmd: "uv run uvicorn app.main:app --port ${PORT}"

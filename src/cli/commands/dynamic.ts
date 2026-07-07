@@ -1,13 +1,14 @@
 import type { Command } from 'commander';
 import { runServiceCommand } from '../../command/command.js';
 import { parseCliEnv } from '../../env/composer.js';
-import { reportRegistryIssues } from '../../manifest/discovery.js';
+import { type RegistryEntry, reportRegistryIssues } from '../../manifest/discovery.js';
 import { type LoadedDocument, loadManifestFile } from '../../manifest/loader.js';
-import { serviceCommandNames } from '../../manifest/runtime.js';
+import { serviceCommandDescription, serviceCommandNames } from '../../manifest/runtime.js';
 import type { ServiceManifest } from '../../manifest/types/index.js';
 import { runFanOut } from '../../util/concurrency.js';
 import { RuntimeFailure, UserError } from '../../util/exit-codes.js';
 import { emit, emitJson, getLogger } from '../../util/logger.js';
+import { colorEnabled, palette } from '../../util/style.js';
 import { inheritRootOptions, resolveExecutionPlan } from '../options.js';
 import { loadServicesContext } from '../services-context.js';
 import { STATIC_COMMAND_NAMES } from '../static-commands.js';
@@ -24,23 +25,79 @@ export function isRegistrableCommand(name: string): boolean {
   return SAFE_NAME.test(name) && !STATIC_COMMAND_NAMES.has(name);
 }
 
+/** Everything `qavor commands` (and dynamic-command `--help`) needs about one command. */
+export interface DynamicCommandInfo {
+  /**
+   * The manifest-declared description, taken from the first service (in name
+   * order) that writes this command as `{ description, operations }`.
+   * `undefined` when no declaring service sets one.
+   */
+  description?: string;
+  /** Names of every service that declares this command, sorted. */
+  services: string[];
+}
+
+/**
+ * Gather every dynamic command declared across the given services: which
+ * services declare each, and its description (if any service sets one).
+ * Services are visited in name order so the chosen description and the
+ * `services` list are both deterministic regardless of registry scan order.
+ */
+export function collectDynamicCommands(
+  services: readonly RegistryEntry[],
+): Map<string, DynamicCommandInfo> {
+  const byCommand = new Map<string, DynamicCommandInfo>();
+  for (const entry of [...services].sort((a, b) => a.name.localeCompare(b.name))) {
+    const service = entry.data as unknown as ServiceManifest;
+    for (const name of serviceCommandNames(service)) {
+      const info = byCommand.get(name);
+      if (info) {
+        info.services.push(entry.name);
+        info.description ??= serviceCommandDescription(service, name);
+      } else {
+        const description = serviceCommandDescription(service, name);
+        byCommand.set(name, { services: [entry.name], ...(description ? { description } : {}) });
+      }
+    }
+  }
+  return byCommand;
+}
+
 /**
  * Register one `qavor <command>` subcommand per discovered manifest command.
  * Every command shares the same fan-out, env composition, and live-view
- * machinery — only the command name differs.
+ * machinery — only the command name differs. `totalServices` is the size of
+ * the whole workspace, used to render a compact "declared by all services"
+ * hint in `--help` instead of spelling out every name.
  */
-export function registerDynamicCommands(program: Command, commandNames: readonly string[]): void {
-  for (const name of [...new Set(commandNames)].sort()) {
+export function registerDynamicCommands(
+  program: Command,
+  commands: ReadonlyMap<string, DynamicCommandInfo>,
+  totalServices: number,
+): void {
+  for (const name of [...commands.keys()].sort()) {
     if (!isRegistrableCommand(name)) continue;
+    const info = commands.get(name);
+    const description = info?.description ?? `Run \`runtime.native.${name}\` across services.`;
     program
       .command(name)
-      .description(`Run \`runtime.native.${name}\` across services that declare it.`)
+      .description(description)
       .option('--only <name...>', 'Limit to specific service names.')
       .option('--env <kv...>', 'Override env values, KEY=VAL.')
+      .addHelpText('after', info ? `\n${declaredByLine(info, totalServices)}\n` : '')
       .action((opts: { only?: string[]; env?: string[] }, cmd: Command) =>
         runDynamicCommand(name, opts, cmd),
       );
   }
+}
+
+/** "Declared by …" help-text line: the full service list, or a compact "all N services". */
+function declaredByLine(info: DynamicCommandInfo, totalServices: number): string {
+  const declaredBy =
+    totalServices > 1 && info.services.length === totalServices
+      ? `all ${totalServices} services`
+      : info.services.join(', ');
+  return `Declared by: ${declaredBy}`;
 }
 
 async function runDynamicCommand(
@@ -136,36 +193,61 @@ async function runDynamicCommand(
   }
 }
 
+/** Hanging indent for a command block's `Services` line and its wrapped continuations. */
+const SERVICES_INDENT = '    ';
+/** Wrap width for the `Services` line; matches the terminal, capped for readability. */
+const MAX_LINE_WIDTH = 80;
+
 /**
- * `qavor commands` — list the dynamic commands declared across the workspace and
- * which services declare each. A command that collides with a built-in (or is an
- * unsafe token) is flagged as shadowed: it is reachable only by editing the
- * manifest to rename it.
+ * Word-wrap `${label}${items joined by ", "}` to `maxWidth` columns, every line
+ * (including the first) prefixed with {@link SERVICES_INDENT}. Wraps only at
+ * item boundaries — a single service name is never split mid-word.
+ */
+function wrapServicesLine(label: string, items: string[], maxWidth: number): string[] {
+  const words = `${label}${items.join(', ')}`.split(' ');
+  const lines: string[] = [];
+  let current = SERVICES_INDENT;
+  for (const word of words) {
+    const candidate = current === SERVICES_INDENT ? current + word : `${current} ${word}`;
+    if (candidate.length > maxWidth && current !== SERVICES_INDENT) {
+      lines.push(current);
+      current = SERVICES_INDENT + word;
+    } else {
+      current = candidate;
+    }
+  }
+  lines.push(current);
+  return lines;
+}
+
+/**
+ * `qavor commands` — list the dynamic commands declared across the workspace,
+ * their manifest-declared description (if any), and which services declare
+ * each, one block per command. A command that collides with a built-in (or is
+ * an unsafe token) is flagged as shadowed: it is reachable only by editing the
+ * manifest to rename it. Also the primary way for a skill to discover, at a
+ * glance, what a workspace can run and what each command is for — hence
+ * `--json`.
  */
 export function registerCommandsList(program: Command): void {
   program
     .command('commands')
-    .description('List dynamic commands declared across the workspace.')
+    .description('List dynamic commands declared across the workspace, with descriptions.')
     .action(async (_opts: unknown, cmd: Command) => {
       const root = inheritRootOptions(cmd);
       const ctx = await loadServicesContext();
       reportRegistryIssues(ctx.registry.issues);
 
-      const byCommand = new Map<string, string[]>();
-      for (const entry of ctx.services) {
-        const service = entry.data as unknown as ServiceManifest;
-        for (const name of serviceCommandNames(service)) {
-          const list = byCommand.get(name) ?? [];
-          list.push(entry.name);
-          byCommand.set(name, list);
-        }
-      }
+      const byCommand = collectDynamicCommands(ctx.services);
+      const totalServices = ctx.services.length;
 
       const commands = [...byCommand.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([name, services]) => ({
+        .map(([name, info]) => ({
           command: name,
-          services: [...services].sort(),
+          description: info.description ?? null,
+          services: info.services,
+          allServices: totalServices > 1 && info.services.length === totalServices,
           registered: isRegistrableCommand(name),
         }));
 
@@ -177,17 +259,33 @@ export function registerCommandsList(program: Command): void {
         emit('(no commands declared in any service manifest)');
         return;
       }
-      const headers = ['COMMAND', 'SERVICES'];
-      const data = commands.map((c) => [
-        c.registered ? c.command : `${c.command} (shadowed)`,
-        c.services.join(', '),
-      ]);
-      const widths = headers.map((h, i) =>
-        Math.max(h.length, ...data.map((row) => (row[i] ?? '').length)),
-      );
-      const fmt = (row: string[]): string =>
-        row.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join('  ');
-      emit(fmt(headers));
-      for (const row of data) emit(fmt(row));
+
+      const c = palette(colorEnabled());
+      const marker = colorEnabled() ? '▸' : '>';
+      const width = Math.min(process.stdout.columns || MAX_LINE_WIDTH, MAX_LINE_WIDTH);
+
+      commands.forEach((cmd, i) => {
+        if (i > 0) emit('');
+        const nameTag = cmd.registered ? cmd.command : `${cmd.command} ${c.dim('(shadowed)')}`;
+        const header = cmd.description
+          ? `${c.cyan(marker)} ${c.bold(nameTag)} ${c.dim('—')} ${cmd.description}`
+          : `${c.cyan(marker)} ${c.bold(nameTag)}`;
+        emit(header);
+
+        const label = `Services (${cmd.services.length}): `;
+        const items = cmd.allServices ? ['all services'] : cmd.services;
+        for (const line of wrapServicesLine(label, items, width)) {
+          emit(c.dim(line));
+        }
+      });
+
+      if (commands.some((cmd) => !cmd.registered)) {
+        emit('');
+        emit(
+          c.dim(
+            '(shadowed): the name collides with a built-in command; rename it in the manifest to run it as `qavor <name>`.',
+          ),
+        );
+      }
     });
 }

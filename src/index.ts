@@ -3,7 +3,12 @@ import { Command } from 'commander';
 import { version as PKG_VERSION } from '../package.json';
 import { registerDiscover } from './cli/commands/discover.js';
 import { registerDoctor } from './cli/commands/doctor.js';
-import { registerCommandsList, registerDynamicCommands } from './cli/commands/dynamic.js';
+import {
+  collectDynamicCommands,
+  type DynamicCommandInfo,
+  registerCommandsList,
+  registerDynamicCommands,
+} from './cli/commands/dynamic.js';
 import { registerEnv } from './cli/commands/env.js';
 import { registerGitCommands } from './cli/commands/git.js';
 import { registerInit } from './cli/commands/init.js';
@@ -15,12 +20,17 @@ import { registerValidate } from './cli/commands/validate.js';
 import { registerWorkspace } from './cli/commands/workspace.js';
 import { loadServicesContext } from './cli/services-context.js';
 import { STATIC_COMMAND_NAMES } from './cli/static-commands.js';
-import { serviceCommandNames } from './manifest/runtime.js';
-import type { ServiceManifest } from './manifest/types/index.js';
 import { ExitCode, QavorError } from './util/exit-codes.js';
 import { configureLogger, getLogger } from './util/logger.js';
 
-function buildProgram(dynamicCommands: readonly string[]): Command {
+interface DiscoveredCommands {
+  commands: ReadonlyMap<string, DynamicCommandInfo>;
+  totalServices: number;
+}
+
+const NO_COMMANDS: DiscoveredCommands = { commands: new Map(), totalServices: 0 };
+
+function buildProgram(discovered: DiscoveredCommands): Command {
   const program = new Command();
   program
     .name('qavor')
@@ -63,7 +73,7 @@ function buildProgram(dynamicCommands: readonly string[]): Command {
   registerCommandsList(program);
   // Manifest-defined commands (prepare, update_libraries, lint, …) are discovered
   // at startup and registered last so a built-in always wins a name collision.
-  registerDynamicCommands(program, dynamicCommands);
+  registerDynamicCommands(program, discovered.commands, discovered.totalServices);
   return program;
 }
 
@@ -86,15 +96,16 @@ function firstSubcommand(argv: string[]): string | undefined {
 }
 
 /**
- * Discover the dynamic command names declared in the current workspace so they
- * can be registered as `qavor <command>` subcommands. Skipped (returns `[]`)
- * when the invoked subcommand is plainly a built-in, so the common path pays no
+ * Discover the dynamic commands declared in the current workspace — names,
+ * descriptions, and declaring services — so they can be registered as
+ * `qavor <command>` subcommands. Skipped (returns {@link NO_COMMANDS}) when the
+ * invoked subcommand is plainly a built-in, so the common path pays no
  * registry-build cost. Any failure (no workspace, unreadable manifests) falls
  * back to the static surface; the command's own action reports real errors.
  */
-async function discoverCommandNames(argv: string[]): Promise<string[]> {
+async function discoverCommands(argv: string[]): Promise<DiscoveredCommands> {
   const sub = firstSubcommand(argv);
-  if (sub !== undefined && sub !== 'help' && STATIC_COMMAND_NAMES.has(sub)) return [];
+  if (sub !== undefined && sub !== 'help' && STATIC_COMMAND_NAMES.has(sub)) return NO_COMMANDS;
   try {
     // Root flags aren't parsed yet at startup discovery; scan argv so remote
     // profile resolution honors --offline / --refresh on the first (memoized)
@@ -104,21 +115,15 @@ async function discoverCommandNames(argv: string[]): Promise<string[]> {
       offline: flags.includes('--offline'),
       refresh: flags.includes('--refresh'),
     });
-    const names = new Set<string>();
-    for (const entry of ctx.services) {
-      for (const name of serviceCommandNames(entry.data as unknown as ServiceManifest)) {
-        names.add(name);
-      }
-    }
-    return [...names];
+    return { commands: collectDynamicCommands(ctx.services), totalServices: ctx.services.length };
   } catch {
-    return [];
+    return NO_COMMANDS;
   }
 }
 
 async function main(argv: string[]): Promise<number> {
-  const dynamicCommands = await discoverCommandNames(argv);
-  const program = buildProgram(dynamicCommands);
+  const discovered = await discoverCommands(argv);
+  const program = buildProgram(discovered);
   try {
     await program.parseAsync(argv, { from: 'node' });
     return ExitCode.Ok;

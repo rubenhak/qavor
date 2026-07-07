@@ -93,6 +93,56 @@ test('resolve-manifest: profile env/runtime/mode merged below the service own va
   }
 });
 
+test('resolve-manifest: a service can override a described command operations while keeping its inherited description', async () => {
+  const ws = await makeTempDir('qavor-resolve-manifest-desc-');
+  try {
+    const profile = await makeEntry(
+      ws,
+      'profiles',
+      [
+        'kind: profile',
+        'name: node_library',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    build:',
+        '      description: "Compile the service for production."',
+        '      operations:',
+        '        cmd: "npm run build"',
+        '    test:',
+        '      description: "Run the unit test suite."',
+        '      operations:',
+        '        cmd: "npm test"',
+        '',
+      ].join('\n'),
+    );
+    const service = await makeEntry(
+      ws,
+      'web',
+      [
+        'kind: service',
+        'name: web',
+        'profiles: [node_library]',
+        'runtime:',
+        // Overrides only `build`'s operations (no `description` key of its own);
+        // `test` is left untouched entirely.
+        '  native: { build: { operations: { cmd: "pnpm run build" } } }',
+        '',
+      ].join('\n'),
+    );
+    const resolved = resolveManifest(service, registryOf([profile, service]));
+    const native = (resolved.data.runtime as { native: Record<string, unknown> }).native;
+    const build = native.build as { description: string; operations: { cmd: string } };
+    const test = native.test as { description: string; operations: { cmd: string } };
+    assert.equal(build.description, 'Compile the service for production.');
+    assert.equal(build.operations.cmd, 'pnpm run build');
+    assert.equal(test.description, 'Run the unit test suite.');
+    assert.equal(test.operations.cmd, 'npm test');
+  } finally {
+    await cleanup(ws);
+  }
+});
+
 test('resolve-manifest: chained profiles resolve with later entries winning', async () => {
   const ws = await makeTempDir('qavor-resolve-manifest-');
   try {

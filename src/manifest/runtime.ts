@@ -19,6 +19,38 @@ export const RESERVED_BACKEND_KEYS: ReadonlySet<string> = new Set([
   'run',
 ]);
 
+/**
+ * A user-defined command written as `{ description, operations }` instead of a
+ * bare step/list, so it can carry a one-line description alongside its steps
+ * (see the `runtimeDescribedCommand` schema def). `operations` holds the same
+ * shape a bare command value would: a single step or a list of steps — by the
+ * time a service manifest reaches this accessor, profile merging has already
+ * resolved away any `$append`/`$prepend`/`$unset` directive.
+ */
+interface DescribedCommand {
+  description?: string;
+  operations?: RuntimeStepOrList;
+}
+
+function isDescribedCommand(value: unknown): value is DescribedCommand {
+  return (
+    typeof value === 'object' && value !== null && !Array.isArray(value) && 'operations' in value
+  );
+}
+
+/**
+ * Normalize a raw `runtime.native.<key>` value into its ordered steps,
+ * transparently unwrapping the `{ description, operations }` form to its
+ * `operations`. Shared by every reader of a backend key that accepts the
+ * described form — dynamic commands via {@link serviceCommandSteps} below, and
+ * `check_installed` / `install` (read directly off the resolved manifest by
+ * `doctor.ts`, since they're reserved keys rather than dynamic commands).
+ */
+export function normalizeCommandValue(value: unknown): RuntimeStep[] {
+  const steps = isDescribedCommand(value) ? value.operations : value;
+  return normalizeSteps(steps as RuntimeStepOrList | undefined);
+}
+
 type BackendRecord = Record<string, unknown>;
 
 /**
@@ -47,11 +79,28 @@ export function serviceCommandNames(service: ServiceManifest): string[] {
 /**
  * The ordered steps for a named command on a service. Returns `[]` when the
  * service does not declare the command (or the name is reserved), so callers can
- * treat "no steps" as "nothing to do here".
+ * treat "no steps" as "nothing to do here". Transparently unwraps the
+ * `{ description, operations }` form to its `operations`.
  */
 export function serviceCommandSteps(service: ServiceManifest, command: string): RuntimeStep[] {
   if (RESERVED_BACKEND_KEYS.has(command)) return [];
   const backend = nativeBackend(service);
   if (!backend) return [];
-  return normalizeSteps(backend[command] as RuntimeStepOrList | undefined);
+  return normalizeCommandValue(backend[command]);
+}
+
+/**
+ * The manifest-declared description for a named command on a service's native
+ * backend — set via the `{ description, operations }` form — or `undefined`
+ * when the command is a bare step/list or sets no description. Documentation
+ * only; has no bearing on what runs.
+ */
+export function serviceCommandDescription(
+  service: ServiceManifest,
+  command: string,
+): string | undefined {
+  const backend = nativeBackend(service);
+  const value = backend?.[command];
+  if (!isDescribedCommand(value)) return undefined;
+  return value.description && value.description.length > 0 ? value.description : undefined;
 }

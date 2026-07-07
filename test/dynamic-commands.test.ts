@@ -84,6 +84,103 @@ test('qavor commands: lists the dynamic commands declared in the workspace', asy
     const migrate = parsed.commands.find((c: { command: string }) => c.command === 'migrate');
     assert.deepEqual(migrate.services, ['web']);
     assert.equal(migrate.registered, true);
+    // Neither command is written in the `{ description, operations }` form.
+    assert.equal(migrate.description, null);
+  } finally {
+    await cleanup(fixtures.base);
+    await cleanup(ws);
+  }
+});
+
+test('qavor commands: surfaces a described command and detects all-services commands', async () => {
+  const fixtures = await buildFixtureRepos({ services: ['web', 'auth'] });
+  const ws = await makeTempDir('qavor-cmds-desc-');
+  try {
+    await setWebManifest(
+      fixtures.serviceRepos.web!,
+      [
+        'kind: service',
+        'name: web',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    build:',
+        '      description: "Compile the web bundle."',
+        '      operations:',
+        '        cmd: "true"',
+        '    prepare:',
+        '      cmd: "true"',
+        'mode: native',
+        '',
+      ].join('\n'),
+    );
+    await fs.writeFile(
+      path.join(fixtures.serviceRepos.auth!, 'qavor.yaml'),
+      [
+        'kind: service',
+        'name: auth',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    build:',
+        '      cmd: "true"',
+        'mode: native',
+        '',
+      ].join('\n'),
+    );
+    await execa('git', ['commit', '-aqm', 'update manifest'], { cwd: fixtures.serviceRepos.auth! });
+    await runCli(['init', fixtures.projectRepo, '--into', ws]);
+    await runCli(['git', 'clone'], { cwd: ws });
+
+    const res = await runCli(['commands', '--json'], { cwd: ws });
+    assert.equal(res.exitCode, 0, `commands failed: ${res.stderr}`);
+    const parsed = JSON.parse(res.stdout);
+
+    // `build` is declared by both services and only `web` sets a description;
+    // it should still be picked up and reported as an all-services command.
+    const build = parsed.commands.find((c: { command: string }) => c.command === 'build');
+    assert.equal(build.description, 'Compile the web bundle.');
+    assert.deepEqual(build.services.sort(), ['auth', 'web']);
+    assert.equal(build.allServices, true);
+
+    // `prepare` is declared only by `web`, so it is not an all-services command.
+    const prepare = parsed.commands.find((c: { command: string }) => c.command === 'prepare');
+    assert.equal(prepare.description, null);
+    assert.deepEqual(prepare.services, ['web']);
+    assert.equal(prepare.allServices, false);
+  } finally {
+    await cleanup(fixtures.base);
+    await cleanup(ws);
+  }
+});
+
+test('qavor <command> --help: shows the manifest description and declaring services', async () => {
+  const fixtures = await buildFixtureRepos({ services: ['web'] });
+  const ws = await makeTempDir('qavor-cmds-help-');
+  try {
+    await setWebManifest(
+      fixtures.serviceRepos.web!,
+      [
+        'kind: service',
+        'name: web',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    build:',
+        '      description: "Compile the web bundle."',
+        '      operations:',
+        '        cmd: "true"',
+        'mode: native',
+        '',
+      ].join('\n'),
+    );
+    await runCli(['init', fixtures.projectRepo, '--into', ws]);
+    await runCli(['git', 'clone'], { cwd: ws });
+
+    const res = await runCli(['build', '--help'], { cwd: ws });
+    assert.equal(res.exitCode, 0, `--help failed: ${res.stderr}`);
+    assert.match(res.stdout, /Compile the web bundle\./);
+    assert.match(res.stdout, /Declared by: web/);
   } finally {
     await cleanup(fixtures.base);
     await cleanup(ws);

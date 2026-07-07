@@ -177,6 +177,117 @@ test('validator: empty list-form step and item missing cmd are rejected', async 
   }
 });
 
+test('validator: a described command ({ description, operations }) passes', async () => {
+  const dir = await makeTempDir();
+  try {
+    const file = await writeYaml(
+      dir,
+      'qavor.yaml',
+      [
+        'kind: service',
+        'name: described',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    build:',
+        '      description: "Compile the service."',
+        '      operations:',
+        '        cmd: "echo build"',
+        '    update_libraries:',
+        '      description: "Upgrade and re-sync dependencies."',
+        '      operations:',
+        '        - cmd: "echo upgrade"',
+        '        - cmd: "echo sync"',
+        '',
+      ].join('\n'),
+    );
+    const docs = await loadManifestFile(file);
+    assert.equal(validateDocument(docs[0]!).ok, true);
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test('validator: a described command without `operations` is rejected', async () => {
+  const dir = await makeTempDir();
+  try {
+    const file = await writeYaml(
+      dir,
+      'qavor.yaml',
+      [
+        'kind: service',
+        'name: baddescribed',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    build:',
+        '      description: "Compile the service."', // missing required `operations`
+        '',
+      ].join('\n'),
+    );
+    const docs = await loadManifestFile(file);
+    assert.equal(validateDocument(docs[0]!).ok, false);
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test('validator: a described command with a non-string description is rejected', async () => {
+  const dir = await makeTempDir();
+  try {
+    const file = await writeYaml(
+      dir,
+      'qavor.yaml',
+      [
+        'kind: service',
+        'name: baddescribed2',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    build:',
+        '      description: true', // must be a string
+        '      operations:',
+        '        cmd: "echo build"',
+        '',
+      ].join('\n'),
+    );
+    const docs = await loadManifestFile(file);
+    assert.equal(validateDocument(docs[0]!).ok, false);
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test('validator: check_installed and install also accept the described ({ description, operations }) form', async () => {
+  const dir = await makeTempDir();
+  try {
+    const file = await writeYaml(
+      dir,
+      'qavor.yaml',
+      [
+        'kind: service',
+        'name: describedlifecycle',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    check_installed:',
+        '      description: "Check pnpm is installed."',
+        '      operations:',
+        '        cmd: "pnpm --version"',
+        '    install:',
+        '      description: "Install pnpm."',
+        '      operations:',
+        '        cmd: "echo install pnpm first"',
+        '',
+      ].join('\n'),
+    );
+    const docs = await loadManifestFile(file);
+    assert.equal(validateDocument(docs[0]!).ok, true);
+  } finally {
+    await cleanup(dir);
+  }
+});
+
 test('validator: profile-merge directive on a command passes', async () => {
   const dir = await makeTempDir();
   try {
