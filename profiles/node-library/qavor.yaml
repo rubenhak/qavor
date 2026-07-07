@@ -1,0 +1,44 @@
+kind: profile
+
+name: node_library
+
+mode: native
+
+runtime:
+  native:
+    enabled: true
+
+    check_installed:
+      description: Check if pnpm is installed.
+      operations:
+        - cmd: "pnpm --version"
+
+    install:
+      description: Install the necessary tools such as pnpm.
+      operations:
+        - cmd: echo "PNPM is not installed. Install it first and try again."
+
+    update_libraries:
+      description: Update the libraries to the latest versions.
+      operations:
+        - cmd: "npx npm-check-updates -u"
+        - cmd: "pnpm clean --lockfile"
+        - cmd: "pnpm install"
+
+    prepare:
+      description: Prepare the library for development.
+      operations:
+        - cmd: 'if [ -n "$NPM_DEPENDENCIES" ]; then npx npm-check-updates -u "$NPM_DEPENDENCIES"; fi'
+        - cmd: "pnpm clean --lockfile"
+        - cmd: "pnpm install"
+
+    build:
+      description: Build the library.
+      operations:
+        - cmd: "npm run build"
+
+    test:
+      description: Run the tests.
+      operations:
+        - cmd: "npm test ${@}"
+
