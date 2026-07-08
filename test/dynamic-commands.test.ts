@@ -83,8 +83,9 @@ test('qavor commands: lists the dynamic commands declared in the workspace', asy
     assert.equal(res.exitCode, 0, `commands failed: ${res.stderr}`);
     const parsed = JSON.parse(res.stdout);
     const names = parsed.commands.map((c: { command: string }) => c.command).sort();
-    // `run` is a reserved lifecycle key, never a dynamic command.
-    assert.deepEqual(names, ['migrate', 'prepare']);
+    // Only `enabled`/`check_installed`/`install` are reserved; `run` is an
+    // ordinary user-defined command, discovered and listed like any other.
+    assert.deepEqual(names, ['migrate', 'prepare', 'run']);
     const migrate = parsed.commands.find((c: { command: string }) => c.command === 'migrate');
     assert.deepEqual(migrate.services, ['web']);
     assert.equal(migrate.registered, true);

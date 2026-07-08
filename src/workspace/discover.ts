@@ -55,8 +55,8 @@ function renderServiceManifest(name: string): string {
     runtime: {
       docker: {
         enabled: true,
-        prepare: { cmd: `docker build -t \${IMAGE_NAME} .` },
-        run: { cmd: `docker run -it --rm \${IMAGE_NAME}` },
+        prepare: { operations: [{ cmd: `docker build -t \${IMAGE_NAME} .` }] },
+        run: { operations: [{ cmd: `docker run -it --rm \${IMAGE_NAME}` }] },
       },
     },
     env: {

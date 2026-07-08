@@ -119,7 +119,7 @@
       ]
     },
     "runtimeDescribedCommand": {
-      "description": "A runtime command. Every command on a backend — the reserved `check_installed`, `install`, and `run`, and every user-defined command (`prepare`, `update_libraries`, `lint`, `test`, `migrate`, …) — uses this one uniform shape: an optional one-line `description` plus the `operations` that run. `operations` is a single step, a list of steps run in declaration order (the first non-zero exit aborts the rest), or a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) that extends or drops a value inherited from a referenced profile.",
+      "description": "A runtime command. Every command on a backend — the reserved install-lifecycle commands `check_installed` and `install`, and every user-defined command (`run`, `prepare`, `update_libraries`, `lint`, `test`, `migrate`, …) — uses this one uniform shape: an optional one-line `description` plus the `operations` that run. `operations` is a single step, a list of steps run in declaration order (the first non-zero exit aborts the rest), or a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) that extends or drops a value inherited from a referenced profile.",
       "type": "object",
       "additionalProperties": false,
       "required": ["operations"],
@@ -132,13 +132,12 @@
       }
     },
     "runtimeBackend": {
-      "description": "Runtime backend definition. `enabled` (a boolean gate) is the only non-command key. Every other key is a command that shares one uniform shape (`runtimeDescribedCommand`: an optional `description` plus `operations`) — there is no difference in structure between the reserved lifecycle commands and user-defined ones. Reserved lifecycle commands: `check_installed` + `install` (installation — `install` runs only when `check_installed` fails) and `run` (the long-lived process started by `qavor up`; its `operations` must resolve to a single step). Every *other* key is a user-defined command discovered and run on demand by `qavor <command>` (e.g. `prepare`, `update_libraries`, `lint`, `test`, `migrate`). qavor assumes no fixed command set: any command declared here is runnable, fanned out across the services that define it. A command's `operations` accepts a single step, a list of steps run in declaration order (first non-zero exit aborts the rest), or a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) that extends or drops steps inherited from a referenced profile.",
+      "description": "Runtime backend definition. `enabled` (a boolean gate) is the only non-command key. Every other key is a command that shares one uniform shape (`runtimeDescribedCommand`: an optional `description` plus `operations`) — there is no difference in structure between the reserved lifecycle commands and user-defined ones. Only two commands are reserved, both for the install lifecycle: `check_installed` and `install` (`install` runs only when `check_installed` fails). Every *other* key is a user-defined command discovered and run on demand by `qavor <command>` (e.g. `run`, `prepare`, `update_libraries`, `lint`, `test`, `migrate`); qavor assumes no fixed command set and treats them all identically, fanning each out across the services that declare it. A command's `operations` accepts a single step, a list of steps run in declaration order (first non-zero exit aborts the rest), or a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) that extends or drops steps inherited from a referenced profile.",
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean", "default": false },
         "check_installed": { "$ref": "#/$defs/runtimeDescribedCommand" },
-        "install": { "$ref": "#/$defs/runtimeDescribedCommand" },
-        "run": { "$ref": "#/$defs/runtimeDescribedCommand" }
+        "install": { "$ref": "#/$defs/runtimeDescribedCommand" }
       },
       "additionalProperties": { "$ref": "#/$defs/runtimeDescribedCommand" }
     },

@@ -2,21 +2,19 @@ import { normalizeSteps } from './steps.js';
 import type { RuntimeStep, RuntimeStepOrList, ServiceManifest } from './types/index.js';
 
 /**
- * Keys under a runtime backend that are reserved for the start lifecycle and
- * are therefore *not* user-defined commands:
- *   - `enabled`         — backend gate (boolean, not a step).
+ * Keys under a runtime backend that are *not* user-defined commands:
+ *   - `enabled`         — backend gate (boolean, not a command).
  *   - `check_installed` — installation probe.
  *   - `install`         — installation step (runs when the probe fails).
- *   - `run`             — the long-lived process started by `qavor up`.
  *
- * Every other key on the backend is a dynamic command (`prepare`,
- * `update_libraries`, `lint`, `test`, …) discovered and run by `qavor <command>`.
+ * Every other key on the backend is a dynamic command (`run`, `prepare`,
+ * `update_libraries`, `lint`, `test`, …) discovered and run by `qavor <command>`;
+ * qavor treats them all identically and hard-codes no command names.
  */
 export const RESERVED_BACKEND_KEYS: ReadonlySet<string> = new Set([
   'enabled',
   'check_installed',
   'install',
-  'run',
 ]);
 
 /**

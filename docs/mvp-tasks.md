@@ -39,7 +39,7 @@ Delivered workstreams (A–J from the original plan):
   unconditionally.)
 - **G — Environment composition.** Layered composer with provenance, `${VAR}`
   interpolation, long-form `envSpec` (`required` / `secret`), `qavor env`.
-- **H — Native run.** `src/supervisor/native.ts`, `qavor up` / `down` / `logs` / `ps`.
+- **H — Native run.** *Removed* — the native supervisor and its `qavor up` / `down` / `logs` / `ps` verbs were dropped; a long-running service is now a foreground `qavor run` manifest command (qavor daemonizes nothing).
 - **I — Doctor.** `qavor doctor` (git, docker warn-only, writable dirs, per-service
   `check_installed`).
 - **J — Documentation & release.** README + docs; npm publish via GitHub Actions

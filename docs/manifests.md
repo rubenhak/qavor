@@ -15,7 +15,8 @@ All manifests share three conventions:
 
 > **Runtime-support status.** Every manifest shape below validates against the
 > schemas, but not all of it executes yet. **Runs today:** the `native` runtime
-> (`qavor up`), dynamic commands (`qavor <command>`), profiles (local + remote,
+> via dynamic commands (`qavor <command>` — e.g. `qavor run`, `qavor prepare`),
+> profiles (local + remote,
 > chaining, merge directives), `require:`-dependency env composition, and the
 > `env.publish` contract (composed into dependents by `qavor resolve-env`).
 > **Not yet executed:** `mode: docker` / `mode: docker-compose` bring-up
@@ -172,8 +173,8 @@ runtime:
     enabled: true
     # Every command shares one uniform shape: an optional one-line `description`
     # plus `operations` (the step or steps that run). There is no structural
-    # difference between the reserved lifecycle commands (check_installed,
-    # install, run) and user-defined ones — they all look like this.
+    # difference between the two reserved install-lifecycle commands
+    # (check_installed, install) and user-defined ones — they all look like this.
     check_installed:
       description: "Check that uv is installed."
       operations:
@@ -200,8 +201,9 @@ runtime:
       operations:
         - cmd: "uv lock --upgrade"
         - cmd: "uv sync --all-extras"
-    # `run` is reserved: the long-lived process started by `qavor up`. It uses the
-    # same shape, but its `operations` must resolve to a single step.
+    # `run` is just another user-defined command — start the app on demand with
+    # `qavor run`. qavor does not special-case or supervise it; the name is only a
+    # convention.
     run:
       description: "Start the app."
       operations:
@@ -383,8 +385,8 @@ runtime:
     enabled: true
     # Every command shares one uniform shape: an optional one-line `description`
     # plus `operations` (the step or steps that run). There is no structural
-    # difference between the reserved lifecycle commands (check_installed,
-    # install, run) and user-defined ones — they all look like this.
+    # difference between the two reserved install-lifecycle commands
+    # (check_installed, install) and user-defined ones — they all look like this.
     check_installed:
       description: "Check that uv is installed."
       operations:
@@ -411,8 +413,9 @@ runtime:
       operations:
         - cmd: "uv lock --upgrade"
         - cmd: "uv sync --all-extras"
-    # `run` is reserved: the long-lived process started by `qavor up`. It uses the
-    # same shape, but its `operations` must resolve to a single step.
+    # `run` is just another user-defined command — start the app on demand with
+    # `qavor run`. qavor does not special-case or supervise it; the name is only a
+    # convention.
     run:
       description: "Start the app."
       operations:
@@ -459,7 +462,7 @@ list on a child overrides the parent's `prepare` outright.
 To *extend* an inherited step list instead of replacing it, a command's
 `operations` may be a **merge directive** — an object with exactly one of
 `$append` / `$prepend` / `$replace` / `$unset`. Directives are available on every
-command, including `run` (whose result must still resolve to a single step).
+command, without exception.
 
 ```yaml
 kind: profile

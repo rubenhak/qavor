@@ -69,13 +69,10 @@ qavor git status                        # aggregated repo state across all clone
 qavor manifests                         # tree of every manifest discovered in the workspace
 qavor commands                          # list manifest-defined commands across the workspace
 qavor prepare                           # run runtime.native.prepare for services that declare it
+qavor run                               # `run` is just a manifest command like any other
 qavor update_libraries                  # any manifest command is runnable as `qavor <command>`
 qavor env auth                          # resolved env with provenance for one service
 qavor resolve-env --only auth --format export   # sourceable env including require: deps
-qavor up auth                           # spawn the service under qavor's native supervisor
-qavor logs auth -f                      # tail rotated logs from .qavor/logs/auth/
-qavor ps                                # liveness + uptime of tracked services
-qavor down auth                         # graceful SIGTERM then SIGKILL
 ```
 
 For a single-repo project (`standalone: true`), skip `init`/`clone` — run any command from inside the repo and `qavor discover` to scaffold service manifests.
@@ -90,10 +87,9 @@ All multi-repo verbs accept a `--only <name...>` selector. `--json` flips every 
 - Manifest model for all four kinds (`workspaces`, `project`, `service`, `profile`) with schema validation and `file:line:column` diagnostics (`qavor validate`, `qavor manifests`, `qavor workspace info`).
 - Repo discovery and scaffolding (`qavor discover`).
 - Git fan-out: `clone`, `sync`, `status`, `commit`, `push` with `--only`, bounded concurrency, and a live status TUI.
-- Dynamic manifest commands: any non-reserved `runtime.native.<key>` (e.g. `prepare`, `update_libraries`, `lint`, `test`) is discovered and fanned out as `qavor <command>`; `qavor commands` lists them.
+- Dynamic manifest commands: every `runtime.native.<key>` other than `enabled` / `check_installed` / `install` (e.g. `run`, `prepare`, `update_libraries`, `lint`, `test`) is discovered and fanned out as `qavor <command>`; `qavor commands` lists them. qavor hard-codes no command names.
 - Env composition with provenance and precedence (`qavor env`, `qavor resolve-env`), including `require:`-dependency env and backing-service `env.publish` contract propagation, with `export` / `dotenv` sourceable output.
 - Profiles: local + **remote** sources (https / GitHub / git / `file://`), profile chaining, and `$append` / `$prepend` / `$replace` / `$unset` step-list merge directives (`qavor resolve-manifest`).
-- Native process supervision: `qavor up` / `down` / `logs` / `ps` with detached process groups, rotated logs, and graceful shutdown.
 - `qavor doctor` toolchain + workspace preflight.
 - `--json` on every command, documented exit codes, published to npm with provenance.
 
@@ -101,7 +97,8 @@ All multi-repo verbs accept a `--only <name...>` selector. `--json` flips every 
 
 - Container execution (`--mode docker`) and backing-service bring-up (`mode: docker-compose`, generated compose project, `qavor backing …`) — the `env.publish` *contract* composes, but qavor does not yet run the compose project.
 - `${secret:...}` interpolation and secret providers (reserved; fails closed today).
-- Runtime dependency-graph orchestration: topological multi-service start, readiness probes / `waitFor`. `qavor up` supervises one service per invocation.
+- Built-in process supervision. qavor ships no `up` / `down` / `ps` / `logs` verbs and does not daemonize or track PIDs; a long-running service is just a manifest command (`qavor run`) that runs in the foreground. Backgrounding/supervision is left to the command itself (nohup, a process manager, `docker compose up -d`, …).
+- Runtime dependency-graph orchestration: topological multi-service start, readiness probes / `waitFor`.
 - Group / tag / state selectors (`--group`, `--tag`, `--dirty`, …).
 - `qavor graph`, `qavor explain`, `qavor docs`, branch/PR helpers, coordinated tagging, stash, `clean`, hot-reload, debug mode.
 - SEA per-platform binaries, Homebrew tap, curl installer.
