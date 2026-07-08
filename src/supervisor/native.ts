@@ -3,7 +3,7 @@ import path from 'node:path';
 import { type Options as ExecaOptions, execa, type ResultPromise } from 'execa';
 import { assertNoIssues, composeServiceEnv, toEnvObject } from '../env/composer.js';
 import type { LoadedDocument } from '../manifest/loader.js';
-import { normalizeSteps } from '../manifest/steps.js';
+import { normalizeCommandValue } from '../manifest/runtime.js';
 import type { ServiceManifest } from '../manifest/types/index.js';
 import { RuntimeFailure, UserError } from '../util/exit-codes.js';
 import { ensureDir } from '../util/fs.js';
@@ -38,17 +38,17 @@ const LOG_MAX_BYTES = 5 * 1024 * 1024;
 const LOG_BACKLOG = 5;
 
 export async function startNativeService(opts: StartOptions): Promise<StartResult> {
-  const runSteps = normalizeSteps(opts.service.runtime?.native?.run);
+  const runSteps = normalizeCommandValue(opts.service.runtime?.native?.run);
   if (runSteps.length > 1) {
     throw new UserError(
-      `Service '${opts.service.name}' declares ${runSteps.length} run steps. ` +
-        'runtime.native.run takes a single command — it supervises one long-lived process.',
+      `Service '${opts.service.name}' declares ${runSteps.length} run operations. ` +
+        'runtime.native.run supervises one long-lived process — its operations must be a single step.',
     );
   }
   const runStep = runSteps[0];
   if (!runStep) {
     throw new UserError(
-      `Service '${opts.service.name}' has no runtime.native.run.cmd. Cannot start in native mode.`,
+      `Service '${opts.service.name}' has no runtime.native.run operation. Cannot start in native mode.`,
     );
   }
   const cmd = runStep.cmd;

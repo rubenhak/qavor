@@ -54,19 +54,18 @@ export type ProfileSourceUri = string;
  */
 export type EnvKey = string;
 /**
- * The value of a user-defined command on a runtime backend: either a bare step, a bare list of steps, a bare profile-merge directive (together, `runtimeStepOrMerge`), or a `runtimeDescribedCommand` object that pairs a `description` with `operations` holding the same step/list/directive shapes.
+ * The value of a command's `operations`: either a single step or a list of steps (like `runtimeStepOrList`), or a `runtimeMergeDirective` object (`$append`/`$prepend`/`$replace`/`$unset`) that controls how these steps merge with the same command inherited from a referenced profile. The bare step / list form keeps the default behaviour (replace the inherited value).
  */
-export type RuntimeCommandValue =
+export type RuntimeStepOrMerge =
   | RuntimeStep
   | [RuntimeStep, ...RuntimeStep[]]
-  | RuntimeMergeDirective
-  | RuntimeDescribedCommand;
+  | RuntimeMergeDirective;
 /**
  * Scalar value usable on the right-hand side of an env entry. Strings support ${VAR} and ${secret:NAME} interpolation.
  */
 export type EnvScalar = string | number | boolean;
 /**
- * Merge directive controlling how a runtime command value combines with the same command inherited from a referenced profile. Exactly one of `$append`/`$prepend`/`$replace`/`$unset` may be set. `$append`/`$prepend` splice the given step(s) after / before the inherited steps; `$replace` overrides them entirely (the same effect as a bare list, stated explicitly); `$unset: true` drops the inherited command. On a command with no inherited value, `$append`/`$prepend`/`$replace` simply yield the given step(s) and `$unset` is a no-op.
+ * Merge directive controlling how a command's `operations` combine with the same command inherited from a referenced profile. Written as the value of `operations`. Exactly one of `$append`/`$prepend`/`$replace`/`$unset` may be set. `$append`/`$prepend` splice the given step(s) after / before the inherited steps; `$replace` overrides them entirely (the same effect as a bare list, stated explicitly); `$unset: true` drops the inherited command entirely. On a command with no inherited value, `$append`/`$prepend`/`$replace` simply yield the given step(s) and `$unset` is a no-op.
  */
 export type RuntimeMergeDirective = {
   $append?: RuntimeStepOrList;
@@ -75,19 +74,12 @@ export type RuntimeMergeDirective = {
   $unset?: true;
 } & RuntimeMergeDirective1;
 /**
- * A runtime step value: either a single step object, or a list of step objects run in sequence. Each list entry is a full step (its own `cmd`/`cwd`/`env`/`shell`); steps run in declaration order and the first non-zero exit aborts the rest. The single-object form (`prepare: { cmd: "…" }`) and the list form (`prepare: [{ cmd: "…" }, { cmd: "…" }]`) are interchangeable. `run` accepts only a single step.
+ * A step value used inside a command's `operations`: either a single step object, or a list of step objects run in sequence. Each list entry is a full step (its own `cmd`/`cwd`/`env`/`shell`); steps run in declaration order and the first non-zero exit aborts the rest. The single-object form (`operations: { cmd: "…" }`) and the list form (`operations: [{ cmd: "…" }, { cmd: "…" }]`) are interchangeable.
  */
 export type RuntimeStepOrList = RuntimeStep | [RuntimeStep, ...RuntimeStep[]];
 export type RuntimeMergeDirective1 = {
   [k: string]: unknown | undefined;
 };
-/**
- * A runtime command value that additionally supports profile-merge directives: either a single step or a list of steps (like `runtimeStepOrList`), or a `runtimeMergeDirective` object (`$append`/`$prepend`/`$replace`/`$unset`) that controls how this value merges with the same command inherited from a referenced profile. The bare step / list form keeps the default behaviour (replace the inherited value).
- */
-export type RuntimeStepOrMerge =
-  | RuntimeStep
-  | [RuntimeStep, ...RuntimeStep[]]
-  | RuntimeMergeDirective;
 /**
  * A single dependency edge. Exactly one of `service` or `group` must be set. Backing services (postgres, kafka, …) are referenced the same way as any other service.
  */
@@ -239,16 +231,26 @@ export interface RuntimeBlock {
   'docker-compose'?: RuntimeBackend;
 }
 /**
- * Runtime backend definition. A small set of keys is reserved for the start lifecycle: `enabled` (gate), `check_installed` + `install` (installation — install runs only when check_installed fails), and `run` (the long-lived process started by `qavor up`; `run` takes a single step). Every *other* key is a user-defined command — a named shell step (or list of steps) discovered and run on demand by `qavor <command>` (e.g. `prepare`, `update_libraries`, `lint`, `test`, `migrate`). `check_installed`, `install`, and every user-defined command may be written as a bare step/list, or as a `runtimeDescribedCommand` object (`description` + `operations`) to document what it does; `run` cannot (it is always a single bare step). qavor assumes no fixed command set: any command declared here is runnable, fanned out across the services that define it. Each command accepts a single step or a list of steps run in declaration order; the first non-zero exit aborts the rest. `check_installed`, `install`, and user-defined commands additionally accept a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) to extend rather than replace a step list inherited from a referenced profile — either bare, or nested under `operations` when using the described form.
+ * Runtime backend definition. `enabled` (a boolean gate) is the only non-command key. Every other key is a command that shares one uniform shape (`runtimeDescribedCommand`: an optional `description` plus `operations`) — there is no difference in structure between the reserved lifecycle commands and user-defined ones. Reserved lifecycle commands: `check_installed` + `install` (installation — `install` runs only when `check_installed` fails) and `run` (the long-lived process started by `qavor up`; its `operations` must resolve to a single step). Every *other* key is a user-defined command discovered and run on demand by `qavor <command>` (e.g. `prepare`, `update_libraries`, `lint`, `test`, `migrate`). qavor assumes no fixed command set: any command declared here is runnable, fanned out across the services that define it. A command's `operations` accepts a single step, a list of steps run in declaration order (first non-zero exit aborts the rest), or a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) that extends or drops steps inherited from a referenced profile.
  */
 export interface RuntimeBackend {
   enabled?: boolean;
-  check_installed?: RuntimeCommandValue;
-  install?: RuntimeCommandValue;
-  run?: RuntimeStepOrList;
+  check_installed?: RuntimeDescribedCommand;
+  install?: RuntimeDescribedCommand;
+  run?: RuntimeDescribedCommand;
 }
 /**
- * Single shell step in a runtime backend entry (`run`, `check_installed`, `install`, or any user-defined command such as `prepare`).
+ * A runtime command. Every command on a backend — the reserved `check_installed`, `install`, and `run`, and every user-defined command (`prepare`, `update_libraries`, `lint`, `test`, `migrate`, …) — uses this one uniform shape: an optional one-line `description` plus the `operations` that run. `operations` is a single step, a list of steps run in declaration order (the first non-zero exit aborts the rest), or a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) that extends or drops a value inherited from a referenced profile.
+ */
+export interface RuntimeDescribedCommand {
+  /**
+   * One-line human-readable description of what this command does. Surfaced by `qavor commands` and by `qavor <command> --help`; has no effect on execution.
+   */
+  description?: string;
+  operations: RuntimeStepOrMerge;
+}
+/**
+ * A single shell step: one `cmd` plus optional `cwd`/`env`/`shell`. Steps are the atoms that make up a command's `operations` list.
  */
 export interface RuntimeStep {
   /**
@@ -286,16 +288,6 @@ export interface EnvSpec {
   pattern?: string;
   secret?: boolean;
   description?: string;
-}
-/**
- * A user-defined command written with an explicit one-line `description` alongside its `operations` (the actual step or steps). `operations` accepts the same shapes as a bare command value: a single step, a list of steps run in declaration order, or a profile-merge directive (`$append`/`$prepend`/`$replace`/`$unset`) extending a value inherited from a referenced profile. Purely additive sugar over a bare command value — has no effect on what runs beyond `operations` itself.
- */
-export interface RuntimeDescribedCommand {
-  /**
-   * One-line human-readable description of what this command does. Surfaced by `qavor commands` and by `qavor <command> --help`; has no effect on execution.
-   */
-  description?: string;
-  operations: RuntimeStepOrMerge;
 }
 /**
  * Layered env block. `common` always applies; `native` or `docker` is layered on top depending on the active run mode. `publish` (optional) is the explicit contract a backing service exposes to its dependents at start time — when present, dependents receive only the published keys instead of the service's full composed env. See the proposal section on Manifest Resolution Order for the full precedence chain.

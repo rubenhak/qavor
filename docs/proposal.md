@@ -139,7 +139,7 @@ Each item is tagged ✅ done · 🟡 partial · ⬜ planned (see [§0](#0-implem
 ### 5.2 Repo Preparation (dependencies)
 
 - ✅ Prepare node / python / uv dependencies (via a `prepare` dynamic command).
-- ✅ **Per-runtime steps in the manifest** — reserved lifecycle keys `runtime.<backend>.{ check_installed, install, run }` plus any number of **user-defined commands** (e.g. `prepare`, `update_libraries`, `lint`). Each command is discovered and run on demand as `qavor <command>`; qavor assumes no fixed command set. A typical `prepare` command encapsulates whatever the language toolchain needs (`uv sync`, `pnpm install --frozen-lockfile`, `cargo fetch`, …). A command may optionally be written as `{ description, operations }` instead of a bare step/list — `operations` holds the actual step(s) and `description` is documentation-only text surfaced by `qavor commands` and `qavor <command> --help`; a service inherits a profile's description unless it sets its own.
+- ✅ **Per-runtime steps in the manifest** — reserved lifecycle keys `runtime.<backend>.{ check_installed, install, run }` plus any number of **user-defined commands** (e.g. `prepare`, `update_libraries`, `lint`). Each command is discovered and run on demand as `qavor <command>`; qavor assumes no fixed command set. A typical `prepare` command encapsulates whatever the language toolchain needs (`uv sync`, `pnpm install --frozen-lockfile`, `cargo fetch`, …). Every command shares one uniform shape — `{ description?, operations }`, with no structural difference between the reserved lifecycle keys and user-defined commands — where `operations` holds the actual step(s) and `description` is optional documentation-only text surfaced by `qavor commands` and `qavor <command> --help`; a service inherits a profile's description unless it sets its own.
 - ✅ **Profiles for reuse** — common prepare/run recipes (e.g. `python_application`, `node_application`) live in profile manifests and are referenced by services. A `profiles:` entry may reference a profile by name (local) or by a **remote source** — https / GitHub / git / `file://` — so a curated profile can be shared across workspaces; the remote profile is fetched, optionally sha256-pinned, cached under `~/.cache/qavor/`, and resolved by name at registry-build time (ADR-007). `--offline` uses the cache only; `--refresh` re-fetches.
 - ⬜ **Toolchain version management** — detect & delegate to `mise`/`asdf` if present; otherwise warn through `qavor doctor`.
 - ⬜ **Lockfile-aware skip** — hash declared lockfile inputs to skip `prepare` when unchanged. (An early implementation was removed; commands currently run unconditionally.)
@@ -295,15 +295,15 @@ profiles: [python_application]
 runtime:
   native:
     enabled: true
-    check_installed: { cmd: "uv --version" }
-    install:         { cmd: "echo 'install uv first' && exit 1" }
-    prepare:         { cmd: "uv sync --all-extras" }
-    run:             { cmd: "uv run uvicorn app.main:app --port ${PORT}" }
+    check_installed: { operations: { cmd: "uv --version" } }
+    install:         { operations: { cmd: "echo 'install uv first' && exit 1" } }
+    prepare:         { operations: { cmd: "uv sync --all-extras" } }
+    run:             { operations: { cmd: "uv run uvicorn app.main:app --port ${PORT}" } }
   docker:
     enabled: true
-    check_installed: { cmd: "docker --version" }
-    prepare:         { cmd: "docker build -t ${IMAGE_NAME} ." }
-    run:             { cmd: "docker run -it --rm ${IMAGE_NAME}" }
+    check_installed: { operations: { cmd: "docker --version" } }
+    prepare:         { operations: { cmd: "docker build -t ${IMAGE_NAME} ." } }
+    run:             { operations: { cmd: "docker run -it --rm ${IMAGE_NAME}" } }
 
 mode: native
 
@@ -353,14 +353,14 @@ name: python_application
 runtime:
   native:
     enabled: true
-    check_installed: { cmd: "uv --version" }
-    prepare:         { cmd: "uv sync --all-extras" }
-    run:             { cmd: "uv run uvicorn app.main:app --port ${PORT}" }
+    check_installed: { operations: { cmd: "uv --version" } }
+    prepare:         { operations: { cmd: "uv sync --all-extras" } }
+    run:             { operations: { cmd: "uv run uvicorn app.main:app --port ${PORT}" } }
   docker:
     enabled: true
-    check_installed: { cmd: "docker --version" }
-    prepare:         { cmd: "docker build -t ${IMAGE_NAME} ." }
-    run:             { cmd: "docker run -it --rm ${IMAGE_NAME}" }
+    check_installed: { operations: { cmd: "docker --version" } }
+    prepare:         { operations: { cmd: "docker build -t ${IMAGE_NAME} ." } }
+    run:             { operations: { cmd: "docker run -it --rm ${IMAGE_NAME}" } }
 
 mode: native
 

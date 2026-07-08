@@ -166,10 +166,11 @@ function mergeOverlay(base: Overlay, top: Overlay): Overlay {
 /**
  * Recursively merge plain objects; everything else is replaced by `top`.
  *
- * Runtime step lists additionally honour profile-merge directives: when `top`
- * is an `$append`/`$prepend`/`$replace` directive it is computed against the
- * inherited `base` (see {@link applyDirective}), and an `$unset` child value is
- * deleted rather than assigned. Any other array or scalar replaces `base`.
+ * A command's `operations` additionally honours profile-merge directives: when
+ * it is an `$append`/`$prepend`/`$replace` directive it is computed against the
+ * inherited `base` (see {@link applyDirective}); a command whose `operations` is
+ * `{ $unset: true }` drops the whole inherited command rather than being merged.
+ * Any other array or scalar replaces `base`.
  */
 function deepMerge(base: unknown, top: unknown): unknown {
   if (isMergeDirective(top)) return applyDirective(base, top);
@@ -178,7 +179,7 @@ function deepMerge(base: unknown, top: unknown): unknown {
   if (!isPlainObject(base)) return materialize(top);
   const out: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(top)) {
-    if (isUnset(value)) {
+    if (isUnset(value) || isCommandUnset(value)) {
       delete out[key];
       continue;
     }
@@ -194,9 +195,18 @@ function isMergeDirective(v: unknown): v is Record<string, unknown> {
   return isPlainObject(v) && DIRECTIVE_KEYS.some((k) => k in v);
 }
 
-/** The `{ $unset: true }` directive: drop a command inherited from a profile. */
+/** The bare `{ $unset: true }` directive: drop the value it is assigned to. */
 function isUnset(v: unknown): boolean {
   return isPlainObject(v) && v.$unset === true;
+}
+
+/**
+ * A command whose `operations` is the `{ $unset: true }` directive — the uniform
+ * way to drop a command inherited from a profile (`<cmd>: { operations: { $unset: true } }`).
+ * The whole command key is removed rather than merged.
+ */
+function isCommandUnset(v: unknown): boolean {
+  return isPlainObject(v) && isUnset(v.operations);
 }
 
 /** Apply a step-list directive against the inherited value, yielding a concrete step list. */
@@ -219,7 +229,7 @@ function materialize(v: unknown): unknown {
   if (!isPlainObject(v)) return v;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(v)) {
-    if (isUnset(value)) continue;
+    if (isUnset(value) || isCommandUnset(value)) continue;
     out[key] = materialize(value);
   }
   return out;

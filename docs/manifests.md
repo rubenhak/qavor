@@ -71,7 +71,7 @@ mode: native
 runtime:
   native:
     enabled: true
-    run: { cmd: pnpm start }
+    run: { operations: { cmd: pnpm start } }
 ```
 
 Case 2 — a single repo with several services a few directories down. The root holds
@@ -170,54 +170,61 @@ groups: [backend]
 runtime:
   native:
     enabled: true
-    # command check installed when starting natively
+    # Every command shares one uniform shape: an optional one-line `description`
+    # plus `operations` (the step or steps that run). There is no structural
+    # difference between the reserved lifecycle commands (check_installed,
+    # install, run) and user-defined ones — they all look like this.
     check_installed:
-      cmd: "uv --version"
-    # command install when starting natively
+      description: "Check that uv is installed."
+      operations:
+        - cmd: "uv --version"
     install:
-      cmd: |
-        echo "UV is not installed. Install it first and try again."
+      description: "Install uv."
+      operations:
+        - cmd: |
+            echo "UV is not installed. Install it first and try again."
     # `prepare` is a user-defined command, not a reserved key. Any key here other
     # than enabled/check_installed/install/run is a command, discovered and run
     # on demand as `qavor <key>` (here `qavor prepare`). qavor assumes no fixed
-    # set. Wrap it as `{ description, operations }` instead of a bare step/list
-    # to document what it does — surfaced by `qavor commands` and by
-    # `qavor <command> --help`. `operations` accepts the same shapes a bare
-    # command value would (single step, list of steps, or a profile-merge
-    # directive); a service referencing this profile inherits the description
+    # set. `description` is documentation only — surfaced by `qavor commands` and
+    # by `qavor <command> --help`; a service referencing this profile inherits it
     # unless it overrides it.
     prepare:
       description: "Sync Python dependencies via uv."
       operations:
-        cmd: "uv sync --all-extras"
-    # another user-defined command — run on demand as `qavor update_libraries`.
+        - cmd: "uv sync --all-extras"
     # `operations` may be a list of steps run in sequence — each entry is a full
     # step (own cmd/cwd/env/shell) and the first non-zero exit aborts the rest.
-    # (`run` is the exception: it takes a single command, and is not describable
-    # this way.)
     update_libraries:
       description: "Upgrade the uv lockfile and re-sync."
       operations:
         - cmd: "uv lock --upgrade"
         - cmd: "uv sync --all-extras"
-    # `run` is reserved: the long-lived process started by `qavor up`.
+    # `run` is reserved: the long-lived process started by `qavor up`. It uses the
+    # same shape, but its `operations` must resolve to a single step.
     run:
-      cmd: "uv run uvicorn app.main:app --port ${PORT}"
+      description: "Start the app."
+      operations:
+        - cmd: "uv run uvicorn app.main:app --port ${PORT}"
   docker:
     enabled: true
-    # command check installed when starting natively
     check_installed:
-      cmd: "docker --version"
-    # command install when starting natively
+      description: "Check that docker is installed."
+      operations:
+        - cmd: "docker --version"
     install:
-      cmd: |
-        echo "Docker is not installed. Install it first and try again."
-    # command prepare when starting natively
+      description: "Install docker."
+      operations:
+        - cmd: |
+            echo "Docker is not installed. Install it first and try again."
     prepare:
-      cmd: "docker build -t ${IMAGE_NAME} Dockerfile"
-    # command run when starting natively
+      description: "Build the image."
+      operations:
+        - cmd: "docker build -t ${IMAGE_NAME} Dockerfile"
     run:
-      cmd: "docker run -it --rm ${IMAGE_NAME}"
+      description: "Run the container."
+      operations:
+        - cmd: "docker run -it --rm ${IMAGE_NAME}"
 
 
 
@@ -374,54 +381,61 @@ name: python_application
 runtime:
   native:
     enabled: true
-    # command check installed when starting natively
+    # Every command shares one uniform shape: an optional one-line `description`
+    # plus `operations` (the step or steps that run). There is no structural
+    # difference between the reserved lifecycle commands (check_installed,
+    # install, run) and user-defined ones — they all look like this.
     check_installed:
-      cmd: "uv --version"
-    # command install when starting natively
+      description: "Check that uv is installed."
+      operations:
+        - cmd: "uv --version"
     install:
-      cmd: |
-        echo "UV is not installed. Install it first and try again."
+      description: "Install uv."
+      operations:
+        - cmd: |
+            echo "UV is not installed. Install it first and try again."
     # `prepare` is a user-defined command, not a reserved key. Any key here other
     # than enabled/check_installed/install/run is a command, discovered and run
     # on demand as `qavor <key>` (here `qavor prepare`). qavor assumes no fixed
-    # set. Wrap it as `{ description, operations }` instead of a bare step/list
-    # to document what it does — surfaced by `qavor commands` and by
-    # `qavor <command> --help`. `operations` accepts the same shapes a bare
-    # command value would (single step, list of steps, or a profile-merge
-    # directive); a service referencing this profile inherits the description
+    # set. `description` is documentation only — surfaced by `qavor commands` and
+    # by `qavor <command> --help`; a service referencing this profile inherits it
     # unless it overrides it.
     prepare:
       description: "Sync Python dependencies via uv."
       operations:
-        cmd: "uv sync --all-extras"
-    # another user-defined command — run on demand as `qavor update_libraries`.
+        - cmd: "uv sync --all-extras"
     # `operations` may be a list of steps run in sequence — each entry is a full
     # step (own cmd/cwd/env/shell) and the first non-zero exit aborts the rest.
-    # (`run` is the exception: it takes a single command, and is not describable
-    # this way.)
     update_libraries:
       description: "Upgrade the uv lockfile and re-sync."
       operations:
         - cmd: "uv lock --upgrade"
         - cmd: "uv sync --all-extras"
-    # `run` is reserved: the long-lived process started by `qavor up`.
+    # `run` is reserved: the long-lived process started by `qavor up`. It uses the
+    # same shape, but its `operations` must resolve to a single step.
     run:
-      cmd: "uv run uvicorn app.main:app --port ${PORT}"
+      description: "Start the app."
+      operations:
+        - cmd: "uv run uvicorn app.main:app --port ${PORT}"
   docker:
     enabled: true
-    # command check installed when starting natively
     check_installed:
-      cmd: "docker --version"
-    # command install when starting natively
+      description: "Check that docker is installed."
+      operations:
+        - cmd: "docker --version"
     install:
-      cmd: |
-        echo "Docker is not installed. Install it first and try again."
-    # command prepare when starting natively
+      description: "Install docker."
+      operations:
+        - cmd: |
+            echo "Docker is not installed. Install it first and try again."
     prepare:
-      cmd: "docker build -t ${IMAGE_NAME} Dockerfile"
-    # command run when starting natively
+      description: "Build the image."
+      operations:
+        - cmd: "docker build -t ${IMAGE_NAME} Dockerfile"
     run:
-      cmd: "docker run -it --rm ${IMAGE_NAME}"
+      description: "Run the container."
+      operations:
+        - cmd: "docker run -it --rm ${IMAGE_NAME}"
 
 # default run mode for services in this profile (overridable per service via --mode)
 mode: native
@@ -439,13 +453,13 @@ A profile may itself carry a `profiles:` list, so profiles inherit from one or
 more parent profiles. The chain is flattened at registry-build time: parents are
 merged in declaration order (later winning), and the referencing profile/service
 merges on top. `mode` and scalar values replace; `env` maps deep-merge key by
-key; **runtime step lists replace by default** — a `prepare:` list on a child
-overrides the parent's `prepare:` outright.
+key; **a command's `operations` replace by default** — a `prepare.operations`
+list on a child overrides the parent's `prepare` outright.
 
-To *extend* an inherited step list instead of replacing it, a command may use a
-**merge directive** — an object with exactly one of `$append` / `$prepend` /
-`$replace` / `$unset`. Directives are available on `check_installed`, `install`,
-and every user-defined command; `run` is single-step and does not take them.
+To *extend* an inherited step list instead of replacing it, a command's
+`operations` may be a **merge directive** — an object with exactly one of
+`$append` / `$prepend` / `$replace` / `$unset`. Directives are available on every
+command, including `run` (whose result must still resolve to a single step).
 
 ```yaml
 kind: profile
@@ -453,10 +467,12 @@ name: node_base
 runtime:
   native:
     prepare:
-      - { cmd: "pnpm install" }
-      - { cmd: "pnpm build" }
+      operations:
+        - { cmd: "pnpm install" }
+        - { cmd: "pnpm build" }
     test:
-      - { cmd: "pnpm test:unit" }
+      operations:
+        - { cmd: "pnpm test:unit" }
 ---
 kind: service
 name: web
@@ -465,18 +481,22 @@ runtime:
   native:
     # $prepend: run codegen before the inherited install/build steps
     prepare:
-      $prepend:
-        - { cmd: "pnpm codegen" }
+      operations:
+        $prepend:
+          - { cmd: "pnpm codegen" }
     # $append: add an integration pass after the inherited unit tests
     test:
-      $append:
-        - { cmd: "pnpm test:int" }
+      operations:
+        $append:
+          - { cmd: "pnpm test:int" }
     # $replace: explicit form of the default (override inherited steps)
     lint:
-      $replace:
-        - { cmd: "biome check ." }
+      operations:
+        $replace:
+          - { cmd: "biome check ." }
     # $unset: drop a command the parent defined
-    migrate: { $unset: true }
+    migrate:
+      operations: { $unset: true }
 ```
 
 `web` resolves to `prepare: [codegen, install, build]`,

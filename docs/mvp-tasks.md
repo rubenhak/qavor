@@ -54,7 +54,7 @@ These were listed as out-of-scope for MVP but have since landed:
 - **Remote profile sources (ADR-007)** — https / GitHub / git / `file://`
   references, integrity pins, caching, `--offline` / `--refresh`.
 - **Step-list merge directives** — `$append` / `$prepend` / `$replace` / `$unset`
-  for inherited runtime commands.
+  under a command's `operations`, for inherited runtime commands.
 - **`require:` dependency env composition** — a unit's env resolution walks its
   `require:` graph; `qavor resolve-env` exposes it with `export` / `dotenv` output.
 - **Backing-service `env.publish` contract** — published keys (and only those)

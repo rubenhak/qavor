@@ -5,11 +5,17 @@ runtime:
   native:
     enabled: true
     check_installed:
-      cmd: "python3 --version"
+      description: Check that python3 is available.
+      operations:
+        - cmd: "python3 --version"
     prepare:
-      cmd: "python3 -c 'print(\"prepared\")'"
+      description: Prepare the notes service.
+      operations:
+        - cmd: "python3 -c 'print(\"prepared\")'"
     run:
-      cmd: "python3 -c 'import time;print(\"notes running\");time.sleep(3600)'"
+      description: Run the notes service.
+      operations:
+        - cmd: "python3 -c 'import time;print(\"notes running\");time.sleep(3600)'"
 
 mode: native
 

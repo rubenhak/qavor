@@ -46,7 +46,7 @@ test('resolve-manifest: profile env/runtime/mode merged below the service own va
         'name: python_application',
         'mode: docker',
         'runtime:',
-        '  native: { enabled: true, run: { cmd: "uv run app" } }',
+        '  native: { enabled: true, run: { operations: { cmd: "uv run app" } } }',
         'env:',
         '  common: { LOG_LEVEL: info, RUNTIME: python }',
         '',
@@ -61,7 +61,7 @@ test('resolve-manifest: profile env/runtime/mode merged below the service own va
         'profiles: [python_application]',
         'mode: native',
         'runtime:',
-        '  native: { run: { cmd: "uv run uvicorn app:app" } }',
+        '  native: { run: { operations: { cmd: "uv run uvicorn app:app" } } }',
         'env:',
         '  common: { LOG_LEVEL: debug, PORT: 8080 }',
         '',
@@ -84,10 +84,10 @@ test('resolve-manifest: profile env/runtime/mode merged below the service own va
 
     // runtime: deep-merged at the step level, own cmd wins.
     const runtime = resolved.data.runtime as {
-      native: { enabled: boolean; run: { cmd: string } };
+      native: { enabled: boolean; run: { operations: { cmd: string } } };
     };
     assert.equal(runtime.native.enabled, true);
-    assert.equal(runtime.native.run.cmd, 'uv run uvicorn app:app');
+    assert.equal(runtime.native.run.operations.cmd, 'uv run uvicorn app:app');
   } finally {
     await cleanup(ws);
   }
@@ -287,9 +287,11 @@ function stepCmds(resolved: { data: Record<string, unknown> }, command: string):
   const runtime = resolved.data.runtime as {
     native?: Record<string, unknown>;
   };
-  const value = runtime.native?.[command];
+  const value = runtime.native?.[command] as { operations?: unknown } | undefined;
   if (value === undefined) return undefined;
-  const list = Array.isArray(value) ? value : [value];
+  const ops = value.operations;
+  if (ops === undefined) return undefined;
+  const list = Array.isArray(ops) ? ops : [ops];
   return list.map((s) => (s as { cmd: string }).cmd);
 }
 
@@ -302,7 +304,7 @@ test('resolve-manifest: bare list replaces an inherited step list (default)', as
       [
         'kind: profile',
         'name: base',
-        'runtime: { native: { prepare: [ {cmd: a}, {cmd: b} ] } }',
+        'runtime: { native: { prepare: { operations: [ {cmd: a}, {cmd: b} ] } } }',
         '',
       ].join('\n'),
     );
@@ -313,7 +315,7 @@ test('resolve-manifest: bare list replaces an inherited step list (default)', as
         'kind: service',
         'name: svc',
         'profiles: [base]',
-        'runtime: { native: { prepare: [ {cmd: c} ] } }',
+        'runtime: { native: { prepare: { operations: [ {cmd: c} ] } } }',
         '',
       ].join('\n'),
     );
@@ -333,7 +335,7 @@ test('resolve-manifest: $append extends an inherited step list', async () => {
       [
         'kind: profile',
         'name: base',
-        'runtime: { native: { prepare: [ {cmd: a}, {cmd: b} ] } }',
+        'runtime: { native: { prepare: { operations: [ {cmd: a}, {cmd: b} ] } } }',
         '',
       ].join('\n'),
     );
@@ -344,7 +346,7 @@ test('resolve-manifest: $append extends an inherited step list', async () => {
         'kind: service',
         'name: svc',
         'profiles: [base]',
-        'runtime: { native: { prepare: { $append: [ {cmd: c} ] } } }',
+        'runtime: { native: { prepare: { operations: { $append: [ {cmd: c} ] } } } }',
         '',
       ].join('\n'),
     );
@@ -364,7 +366,7 @@ test('resolve-manifest: $prepend extends an inherited step list at the front', a
       [
         'kind: profile',
         'name: base',
-        'runtime: { native: { prepare: [ {cmd: a}, {cmd: b} ] } }',
+        'runtime: { native: { prepare: { operations: [ {cmd: a}, {cmd: b} ] } } }',
         '',
       ].join('\n'),
     );
@@ -375,7 +377,7 @@ test('resolve-manifest: $prepend extends an inherited step list at the front', a
         'kind: service',
         'name: svc',
         'profiles: [base]',
-        'runtime: { native: { prepare: { $prepend: [ {cmd: c} ] } } }',
+        'runtime: { native: { prepare: { operations: { $prepend: [ {cmd: c} ] } } } }',
         '',
       ].join('\n'),
     );
@@ -392,7 +394,12 @@ test('resolve-manifest: $append against a single-step parent normalizes then app
     const base = await makeEntry(
       ws,
       'base',
-      ['kind: profile', 'name: base', 'runtime: { native: { prepare: {cmd: a} } }', ''].join('\n'),
+      [
+        'kind: profile',
+        'name: base',
+        'runtime: { native: { prepare: { operations: {cmd: a} } } }',
+        '',
+      ].join('\n'),
     );
     const service = await makeEntry(
       ws,
@@ -401,7 +408,7 @@ test('resolve-manifest: $append against a single-step parent normalizes then app
         'kind: service',
         'name: svc',
         'profiles: [base]',
-        'runtime: { native: { prepare: { $append: [ {cmd: b} ] } } }',
+        'runtime: { native: { prepare: { operations: { $append: [ {cmd: b} ] } } } }',
         '',
       ].join('\n'),
     );
@@ -421,7 +428,7 @@ test('resolve-manifest: $unset drops a command inherited from a profile', async 
       [
         'kind: profile',
         'name: base',
-        'runtime: { native: { prepare: [ {cmd: a} ], test: [ {cmd: t} ] } }',
+        'runtime: { native: { prepare: { operations: [ {cmd: a} ] }, test: { operations: [ {cmd: t} ] } } }',
         '',
       ].join('\n'),
     );
@@ -432,7 +439,7 @@ test('resolve-manifest: $unset drops a command inherited from a profile', async 
         'kind: service',
         'name: svc',
         'profiles: [base]',
-        'runtime: { native: { prepare: { $unset: true } } }',
+        'runtime: { native: { prepare: { operations: { $unset: true } } } }',
         '',
       ].join('\n'),
     );
@@ -455,7 +462,7 @@ test('resolve-manifest: a directive with no inherited command yields just its st
       [
         'kind: service',
         'name: svc',
-        'runtime: { native: { prepare: { $append: [ {cmd: a} ] } } }',
+        'runtime: { native: { prepare: { operations: { $append: [ {cmd: a} ] } } } }',
         '',
       ].join('\n'),
     );
@@ -472,9 +479,12 @@ test('resolve-manifest: $append composes down a profile chain', async () => {
     const base = await makeEntry(
       ws,
       'base',
-      ['kind: profile', 'name: base', 'runtime: { native: { prepare: [ {cmd: a} ] } }', ''].join(
-        '\n',
-      ),
+      [
+        'kind: profile',
+        'name: base',
+        'runtime: { native: { prepare: { operations: [ {cmd: a} ] } } }',
+        '',
+      ].join('\n'),
     );
     const mid = await makeEntry(
       ws,
@@ -483,7 +493,7 @@ test('resolve-manifest: $append composes down a profile chain', async () => {
         'kind: profile',
         'name: mid',
         'profiles: [base]',
-        'runtime: { native: { prepare: { $append: [ {cmd: b} ] } } }',
+        'runtime: { native: { prepare: { operations: { $append: [ {cmd: b} ] } } } }',
         '',
       ].join('\n'),
     );
@@ -494,7 +504,7 @@ test('resolve-manifest: $append composes down a profile chain', async () => {
         'kind: service',
         'name: svc',
         'profiles: [mid]',
-        'runtime: { native: { prepare: { $append: [ {cmd: c} ] } } }',
+        'runtime: { native: { prepare: { operations: { $append: [ {cmd: c} ] } } } }',
         '',
       ].join('\n'),
     );
