@@ -238,7 +238,7 @@
       ]
     },
     "hooks": {
-      "description": "Lifecycle hooks. Each hook list runs in the manifest's directory at the corresponding lifecycle event. `pre_command`/`post_command` fire around every user-defined `qavor <command>` run; the running command name is exposed to the hook script via the `QAVOR_COMMAND` environment variable so a single hook pair can branch per command.",
+      "description": "Lifecycle hooks. Each hook list runs in the manifest's directory at the corresponding lifecycle event. `pre_command`/`post_command` fire around every user-defined `qavor <command>` run; qavor exposes `QAVOR_COMMAND` (the running command name), `QAVOR_WORKSPACE_DIR`, `QAVOR_PROJECT_DIR`, and `QAVOR_SERVICE_DIR` (absolute workspace/project/service paths) to the hook script and to each command step.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
