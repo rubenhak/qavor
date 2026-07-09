@@ -17,7 +17,7 @@ function profileYaml(name: string, extra = ''): string {
     'runtime:',
     '  native:',
     '    enabled: true',
-    '    run: { cmd: "profile run" }',
+    '    run: { operations: { cmd: "profile run" } }',
     'env: { common: { FROM_REMOTE: yes } }',
     extra,
     '',
@@ -45,7 +45,7 @@ async function build(
 }
 
 function svc(reg: WorkspaceRegistry): {
-  runtime?: { native?: { run?: { cmd?: string } } };
+  runtime?: { native?: { run?: { operations?: { cmd?: string } } } };
   env?: { common?: Record<string, unknown> };
   appliedProfiles?: string[];
 } {
@@ -70,7 +70,7 @@ test('remote profile: file:// string reference is fetched and flattened', async 
     const reg = await build(repo, cache);
     assert.equal(reg.issues.length, 0, JSON.stringify(reg.issues));
     const s = svc(reg);
-    assert.equal(s.runtime?.native?.run?.cmd, 'profile run');
+    assert.equal(s.runtime?.native?.run?.operations?.cmd, 'profile run');
     assert.equal(s.env?.common?.FROM_REMOTE, 'yes');
     assert.deepEqual(s.appliedProfiles, ['remote_base']);
   } finally {

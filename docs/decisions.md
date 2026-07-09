@@ -48,7 +48,7 @@ Format: ADR-NNN, status, context, decision, consequences. Each can be revisited;
 
 ## ADR-002 — Process supervision: **own minimal supervisor for native, compose for docker / docker-compose**
 
-**Status:** Accepted (v0).
+**Status:** Superseded for native mode. The native supervisor described below (and its `up`/`down`/`logs`/`ps` verbs) has been **removed**: qavor hard-codes no command names and does not daemonize or track PIDs. A long-running service is expressed as an ordinary manifest command (`run`, by convention) and run in the foreground via `qavor run`; backgrounding, logging, and signalling are the command's own responsibility. The compose path for `docker` / `docker-compose` remains planned. The original reasoning is retained below for history.
 
 **Context.** qavor must start and stop a heterogeneous set of services in topological order, gate dependents on readiness probes, multiplex logs, and shut down cleanly. Two extremes exist: build a full supervisor, or push everything through `docker compose`.
 
@@ -62,7 +62,7 @@ Format: ADR-NNN, status, context, decision, consequences. Each can be revisited;
 **Consequences.**
 - Two execution backends share one orchestration plane (the dep graph, env composer, readiness gate).
 - We must implement: `start/stop/restart/status`, structured log capture with rotation, SIGTERM-then-SIGKILL with configurable grace, crash detection with optional restart policy, port allocation.
-- Each runtime backend in a manifest exposes the same four steps (`check_installed`, `install`, `prepare`, `run`); the supervisor cares only about `run` (and the readiness probe). The other three drive `qavor doctor` / `qavor prepare`.
+- Each runtime backend in a manifest exposes uniform commands; only `check_installed` and `install` are reserved (they drive `qavor doctor`). `run`, `prepare`, and the rest are ordinary user-defined commands run via `qavor <command>`.
 - We can later add a third backend (e.g., remote/SSH) without disturbing the orchestration plane.
 
 ---
@@ -207,7 +207,7 @@ This is an **additive carve-out**, not a reversal: multi-repo bootstrap still fo
 | ADR | Topic | Decision |
 |---|---|---|
 | 001 | Implementation language | **Node.js (TypeScript)**, Node 26+, shipped on npm as `qavor` (SEA build planned) |
-| 002 | Process supervision | Own minimal native supervisor + compose for docker / docker-compose |
+| 002 | Process supervision | *Superseded for native* (no built-in supervisor; `run` is a foreground manifest command). Compose for docker / docker-compose still planned. |
 | 003 | Container runtime | **Docker only at v0**; pluggable later |
 | 004 | Bootstrap | **`qavor init <project-repo-source>`** — project repo is the seed; `kind: workspaces` pointer is generated |
 | 005 | Compose file | Generated-and-owned, with overlay overrides |

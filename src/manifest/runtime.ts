@@ -2,30 +2,28 @@ import { normalizeSteps } from './steps.js';
 import type { RuntimeStep, RuntimeStepOrList, ServiceManifest } from './types/index.js';
 
 /**
- * Keys under a runtime backend that are reserved for the start lifecycle and
- * are therefore *not* user-defined commands:
- *   - `enabled`         — backend gate (boolean, not a step).
+ * Keys under a runtime backend that are *not* user-defined commands:
+ *   - `enabled`         — backend gate (boolean, not a command).
  *   - `check_installed` — installation probe.
  *   - `install`         — installation step (runs when the probe fails).
- *   - `run`             — the long-lived process started by `qavor up`.
  *
- * Every other key on the backend is a dynamic command (`prepare`,
- * `update_libraries`, `lint`, `test`, …) discovered and run by `qavor <command>`.
+ * Every other key on the backend is a dynamic command (`run`, `prepare`,
+ * `update_libraries`, `lint`, `test`, …) discovered and run by `qavor <command>`;
+ * qavor treats them all identically and hard-codes no command names.
  */
 export const RESERVED_BACKEND_KEYS: ReadonlySet<string> = new Set([
   'enabled',
   'check_installed',
   'install',
-  'run',
 ]);
 
 /**
- * A user-defined command written as `{ description, operations }` instead of a
- * bare step/list, so it can carry a one-line description alongside its steps
- * (see the `runtimeDescribedCommand` schema def). `operations` holds the same
- * shape a bare command value would: a single step or a list of steps — by the
- * time a service manifest reaches this accessor, profile merging has already
- * resolved away any `$append`/`$prepend`/`$unset` directive.
+ * The uniform shape of every runtime command (`check_installed`, `install`,
+ * `run`, and every user-defined command): a `{ description, operations }`
+ * object (see the `runtimeDescribedCommand` schema def). `operations` holds the
+ * steps to run — a single step or a list — by the time a service manifest
+ * reaches this accessor, profile merging has already resolved away any
+ * `$append`/`$prepend`/`$unset` directive.
  */
 interface DescribedCommand {
   description?: string;
@@ -39,12 +37,11 @@ function isDescribedCommand(value: unknown): value is DescribedCommand {
 }
 
 /**
- * Normalize a raw `runtime.native.<key>` value into its ordered steps,
- * transparently unwrapping the `{ description, operations }` form to its
- * `operations`. Shared by every reader of a backend key that accepts the
- * described form — dynamic commands via {@link serviceCommandSteps} below, and
- * `check_installed` / `install` (read directly off the resolved manifest by
- * `doctor.ts`, since they're reserved keys rather than dynamic commands).
+ * Normalize a raw `runtime.<backend>.<command>` value into its ordered steps by
+ * unwrapping the uniform `{ description, operations }` form to its `operations`.
+ * Shared by every reader of a backend command — dynamic commands via
+ * {@link serviceCommandSteps} below, `check_installed` / `install` (read off the
+ * resolved manifest by `doctor.ts`), and `run` (read by the native supervisor).
  */
 export function normalizeCommandValue(value: unknown): RuntimeStep[] {
   const steps = isDescribedCommand(value) ? value.operations : value;

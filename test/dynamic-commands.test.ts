@@ -26,7 +26,8 @@ test('dynamic commands: an arbitrary manifest command is discovered and runnable
         '  native:',
         '    enabled: true',
         '    lint:',
-        '      cmd: "echo linting > lint.marker"',
+        '      operations:',
+        '        - cmd: "echo linting > lint.marker"',
         'mode: native',
         '',
       ].join('\n'),
@@ -63,11 +64,14 @@ test('qavor commands: lists the dynamic commands declared in the workspace', asy
         '  native:',
         '    enabled: true',
         '    run:',
-        '      cmd: "sleep 1"',
+        '      operations:',
+        '        - cmd: "sleep 1"',
         '    prepare:',
-        '      cmd: "true"',
+        '      operations:',
+        '        - cmd: "true"',
         '    migrate:',
-        '      cmd: "true"',
+        '      operations:',
+        '        - cmd: "true"',
         'mode: native',
         '',
       ].join('\n'),
@@ -79,8 +83,9 @@ test('qavor commands: lists the dynamic commands declared in the workspace', asy
     assert.equal(res.exitCode, 0, `commands failed: ${res.stderr}`);
     const parsed = JSON.parse(res.stdout);
     const names = parsed.commands.map((c: { command: string }) => c.command).sort();
-    // `run` is a reserved lifecycle key, never a dynamic command.
-    assert.deepEqual(names, ['migrate', 'prepare']);
+    // Only `enabled`/`check_installed`/`install` are reserved; `run` is an
+    // ordinary user-defined command, discovered and listed like any other.
+    assert.deepEqual(names, ['migrate', 'prepare', 'run']);
     const migrate = parsed.commands.find((c: { command: string }) => c.command === 'migrate');
     assert.deepEqual(migrate.services, ['web']);
     assert.equal(migrate.registered, true);
@@ -109,7 +114,8 @@ test('qavor commands: surfaces a described command and detects all-services comm
         '      operations:',
         '        cmd: "true"',
         '    prepare:',
-        '      cmd: "true"',
+        '      operations:',
+        '        - cmd: "true"',
         'mode: native',
         '',
       ].join('\n'),
@@ -123,7 +129,8 @@ test('qavor commands: surfaces a described command and detects all-services comm
         '  native:',
         '    enabled: true',
         '    build:',
-        '      cmd: "true"',
+        '      operations:',
+        '        - cmd: "true"',
         'mode: native',
         '',
       ].join('\n'),

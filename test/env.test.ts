@@ -38,7 +38,7 @@ test('env: precedence common < native < .env < .env.native < workspace .env < cl
       'runtime:',
       '  native:',
       '    enabled: true',
-      '    run: { cmd: "true" }',
+      '    run: { operations: { cmd: "true" } }',
       '',
     ].join('\n'),
     dotenv: 'C=env\nD=env\nE=env\nF=env\n',
@@ -76,7 +76,7 @@ test('env: interpolation against prior layers', async () => {
       'runtime:',
       '  native:',
       '    enabled: true',
-      '    run: { cmd: "true" }',
+      '    run: { operations: { cmd: "true" } }',
       '',
     ].join('\n'),
   });
@@ -107,7 +107,7 @@ test('env: missing required envSpec fails', async () => {
       'runtime:',
       '  native:',
       '    enabled: true',
-      '    run: { cmd: "true" }',
+      '    run: { operations: { cmd: "true" } }',
       '',
     ].join('\n'),
   });
@@ -135,7 +135,7 @@ test('env: ${secret:...} fails closed at v0', async () => {
       'runtime:',
       '  native:',
       '    enabled: true',
-      '    run: { cmd: "true" }',
+      '    run: { operations: { cmd: "true" } }',
       '',
     ].join('\n'),
   });

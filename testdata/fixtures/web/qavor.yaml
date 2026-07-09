@@ -5,15 +5,25 @@ runtime:
   native:
     enabled: true
     check_installed:
-      cmd: "node --version"
+      description: Check that node is available.
+      operations:
+        - cmd: "node --version"
     install:
-      cmd: "echo 'install node first'"
+      description: Install node.
+      operations:
+        - cmd: "echo 'install node first'"
     prepare:
-      cmd: "node -e 'process.stdout.write(\"ok\\n\")'"
+      description: Prepare the web service.
+      operations:
+        - cmd: "node -e 'process.stdout.write(\"ok\\n\")'"
     update_libraries:
-      cmd: "node -e 'process.stdout.write(\"updated\\n\")'"
+      description: Update the web service libraries.
+      operations:
+        - cmd: "node -e 'process.stdout.write(\"updated\\n\")'"
     run:
-      cmd: "node -e \"const http=require('http');const s=http.createServer((_,r)=>r.end('hi')).listen(process.env.PORT||0,()=>console.log('listening on',s.address().port));setInterval(()=>{},1000);\""
+      description: Run the web service.
+      operations:
+        - cmd: "node -e \"const http=require('http');const s=http.createServer((_,r)=>r.end('hi')).listen(process.env.PORT||0,()=>console.log('listening on',s.address().port));setInterval(()=>{},1000);\""
 
 mode: native
 

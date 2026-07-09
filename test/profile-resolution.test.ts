@@ -37,8 +37,8 @@ test('registry: profile runtime/mode/env are flattened into the service entry', 
       'runtime:',
       '  native:',
       '    enabled: true',
-      '    prepare: { cmd: "pnpm install" }',
-      '    run: { cmd: "npm run build" }',
+      '    prepare: { operations: { cmd: "pnpm install" } }',
+      '    run: { operations: { cmd: "npm run build" } }',
       'env: { common: { RUNTIME: node } }',
       '',
     ].join('\n'),
@@ -53,11 +53,16 @@ test('registry: profile runtime/mode/env are flattened into the service entry', 
   const data = helpers.data as {
     profiles?: unknown;
     mode?: string;
-    runtime?: { native?: { prepare?: { cmd?: string }; run?: { cmd?: string } } };
+    runtime?: {
+      native?: {
+        prepare?: { operations?: { cmd?: string } };
+        run?: { operations?: { cmd?: string } };
+      };
+    };
     env?: { common?: Record<string, unknown> };
   };
-  assert.equal(data.runtime?.native?.prepare?.cmd, 'pnpm install');
-  assert.equal(data.runtime?.native?.run?.cmd, 'npm run build');
+  assert.equal(data.runtime?.native?.prepare?.operations?.cmd, 'pnpm install');
+  assert.equal(data.runtime?.native?.run?.operations?.cmd, 'npm run build');
   assert.equal(data.mode, 'native');
   assert.equal(data.env?.common?.RUNTIME, 'node');
 
@@ -71,7 +76,7 @@ test('registry: own service values win over profile values', async () => {
     base: [
       'kind: profile',
       'name: base',
-      'runtime: { native: { run: { cmd: "profile run" } } }',
+      'runtime: { native: { run: { operations: { cmd: "profile run" } } } }',
       'env: { common: { LOG: info, ONLY_PROFILE: yes } }',
       '',
     ].join('\n'),
@@ -79,7 +84,7 @@ test('registry: own service values win over profile values', async () => {
       'kind: service',
       'name: svc',
       'profiles: [base]',
-      'runtime: { native: { run: { cmd: "own run" } } }',
+      'runtime: { native: { run: { operations: { cmd: "own run" } } } }',
       'env: { common: { LOG: debug } }',
       '',
     ].join('\n'),
@@ -88,10 +93,10 @@ test('registry: own service values win over profile values', async () => {
   assert.equal(reg.issues.length, 0, `unexpected issues: ${JSON.stringify(reg.issues)}`);
   const svc = reg.entries.find((e) => e.kind === 'service' && e.name === 'svc');
   const data = svc?.data as {
-    runtime?: { native?: { run?: { cmd?: string } } };
+    runtime?: { native?: { run?: { operations?: { cmd?: string } } } };
     env?: { common?: Record<string, unknown> };
   };
-  assert.equal(data.runtime?.native?.run?.cmd, 'own run');
+  assert.equal(data.runtime?.native?.run?.operations?.cmd, 'own run');
   assert.equal(data.env?.common?.LOG, 'debug');
   assert.equal(data.env?.common?.ONLY_PROFILE, 'yes');
 });

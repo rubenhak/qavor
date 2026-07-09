@@ -39,7 +39,7 @@ Delivered workstreams (A–J from the original plan):
   unconditionally.)
 - **G — Environment composition.** Layered composer with provenance, `${VAR}`
   interpolation, long-form `envSpec` (`required` / `secret`), `qavor env`.
-- **H — Native run.** `src/supervisor/native.ts`, `qavor up` / `down` / `logs` / `ps`.
+- **H — Native run.** *Removed* — the native supervisor and its `qavor up` / `down` / `logs` / `ps` verbs were dropped; a long-running service is now a foreground `qavor run` manifest command (qavor daemonizes nothing).
 - **I — Doctor.** `qavor doctor` (git, docker warn-only, writable dirs, per-service
   `check_installed`).
 - **J — Documentation & release.** README + docs; npm publish via GitHub Actions
@@ -54,7 +54,7 @@ These were listed as out-of-scope for MVP but have since landed:
 - **Remote profile sources (ADR-007)** — https / GitHub / git / `file://`
   references, integrity pins, caching, `--offline` / `--refresh`.
 - **Step-list merge directives** — `$append` / `$prepend` / `$replace` / `$unset`
-  for inherited runtime commands.
+  under a command's `operations`, for inherited runtime commands.
 - **`require:` dependency env composition** — a unit's env resolution walks its
   `require:` graph; `qavor resolve-env` exposes it with `export` / `dotenv` output.
 - **Backing-service `env.publish` contract** — published keys (and only those)

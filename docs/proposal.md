@@ -139,7 +139,7 @@ Each item is tagged ✅ done · 🟡 partial · ⬜ planned (see [§0](#0-implem
 ### 5.2 Repo Preparation (dependencies)
 
 - ✅ Prepare node / python / uv dependencies (via a `prepare` dynamic command).
-- ✅ **Per-runtime steps in the manifest** — reserved lifecycle keys `runtime.<backend>.{ check_installed, install, run }` plus any number of **user-defined commands** (e.g. `prepare`, `update_libraries`, `lint`). Each command is discovered and run on demand as `qavor <command>`; qavor assumes no fixed command set. A typical `prepare` command encapsulates whatever the language toolchain needs (`uv sync`, `pnpm install --frozen-lockfile`, `cargo fetch`, …). A command may optionally be written as `{ description, operations }` instead of a bare step/list — `operations` holds the actual step(s) and `description` is documentation-only text surfaced by `qavor commands` and `qavor <command> --help`; a service inherits a profile's description unless it sets its own.
+- ✅ **Per-runtime steps in the manifest** — reserved lifecycle keys `runtime.<backend>.{ check_installed, install, run }` plus any number of **user-defined commands** (e.g. `prepare`, `update_libraries`, `lint`). Each command is discovered and run on demand as `qavor <command>`; qavor assumes no fixed command set. A typical `prepare` command encapsulates whatever the language toolchain needs (`uv sync`, `pnpm install --frozen-lockfile`, `cargo fetch`, …). Every command shares one uniform shape — `{ description?, operations }`, with no structural difference between the reserved lifecycle keys and user-defined commands — where `operations` holds the actual step(s) and `description` is optional documentation-only text surfaced by `qavor commands` and `qavor <command> --help`; a service inherits a profile's description unless it sets its own.
 - ✅ **Profiles for reuse** — common prepare/run recipes (e.g. `python_application`, `node_application`) live in profile manifests and are referenced by services. A `profiles:` entry may reference a profile by name (local) or by a **remote source** — https / GitHub / git / `file://` — so a curated profile can be shared across workspaces; the remote profile is fetched, optionally sha256-pinned, cached under `~/.cache/qavor/`, and resolved by name at registry-build time (ADR-007). `--offline` uses the cache only; `--refresh` re-fetches.
 - ⬜ **Toolchain version management** — detect & delegate to `mise`/`asdf` if present; otherwise warn through `qavor doctor`.
 - ⬜ **Lockfile-aware skip** — hash declared lockfile inputs to skip `prepare` when unchanged. (An early implementation was removed; commands currently run unconditionally.)
@@ -159,21 +159,21 @@ distinguished only by how it runs (typically `mode: docker-compose`) and by decl
 - ⬜ **Versioned and pinned** — image versions live in the manifest's `runtime.docker-compose.run.cmd` or in env (e.g. `POSTGRES_IMAGE: postgres:16.3`).
 - ⬜ **Health checks / readiness gating** — dependents only start once probes pass (configured on the runtime backend).
 - 🟡 **Connection info exposure** — the `env.publish:` map is defined and *composes into dependents' env* today (`qavor resolve-env`); it is not yet populated by a running backing service.
-- 🟡 **Volumes, seed data, migrations** — `pre_run` / `post_run` hooks exist and fire for the native supervisor; compose-backed one-shots are planned.
+- 🟡 **Volumes, seed data, migrations** — `pre_run` / `post_run` hooks are defined in the schema but do not currently fire (the native supervisor that invoked them was removed); express setup as ordinary manifest commands or `pre_command` / `post_command` hooks. Compose-backed one-shots are planned.
 - ⬜ **Reset / recreate / snapshot / restore** — `qavor backing reset postgres`, optional snapshot for fast rewinds.
 - ⬜ **Auto port allocation** — avoid conflicts when multiple workspaces coexist.
 - ⬜ **Multiple instances** — e.g., a `postgres-app` backing service and a separate `postgres-test` one.
 
 ### 5.4 Service Execution
 
-- 🟡 Run services natively (✅ one per `qavor up`); running *sets* with graph ordering is planned.
+- 🟡 Run services natively (✅ in the foreground via `qavor run`, a plain manifest command); running *sets* with graph ordering is planned.
 - ⬜ Build docker images for each service.
 - ⬜ Run the same services in containers (`--mode docker` returns "deferred").
-- ✅ **Process supervision** — `up` / `down` / `logs` / `ps` as first-class verbs; PIDs + metadata tracked in `.qavor/state/`. (`restart` not yet a distinct verb.)
+- ⬜ **Process supervision** — qavor ships **no** built-in supervisor: `up` / `down` / `logs` / `ps` were removed, and it does not daemonize or track PIDs. Backgrounding/signalling is the manifest command's own responsibility.
 - 🟡 **Run modes** — `native` is implemented; `docker` per-service is planned.
 - ⬜ **Startup ordering from dep graph** — topological start over `require:` edges, parallel where possible.
 - ⬜ **Health/readiness probes** — HTTP, TCP, command — gate dependents and report status.
-- 🟡 **Log aggregation** — `qavor logs <service>` tails/follows one service's rotated log; multi-service prefixed aggregation is planned.
+- ⬜ **Log aggregation** — removed alongside the native supervisor; a command that runs in the foreground writes straight to the terminal. Compose-backed log aggregation is planned.
 - ⬜ **Hot reload hooks** — declarative `watch:` patterns + restart command.
 - ⬜ **Debug mode** — port-forward debugger ports, set `*_DEBUG` env, attach instructions.
 - ✅ **Graceful shutdown** — SIGTERM to the process group, configurable grace, then SIGKILL.
@@ -218,11 +218,11 @@ distinguished only by how it runs (typically `mode: docker-compose`) and by decl
 
 **C. Diagnostics**
 - ✅ `qavor doctor` (toolchain prereqs, writable dirs, runs each service's `check_installed`).
-- 🟡 Aggregated status: `qavor git status` (repos) and `qavor ps` (services) exist; a single combined dashboard is planned.
+- 🟡 Aggregated status: `qavor git status` (repos) exists; service status is out of scope now that qavor tracks no running processes.
 - ⬜ `qavor explain <service>` (resolved config, env, deps, run command). `qavor resolve-manifest` and `qavor env` cover much of this today.
 
 **D. Logging & Observability (lightweight)**
-- 🟡 Per-service log files with rotation and `qavor logs -f` tail; multi-service prefixed aggregation is planned.
+- ⬜ Per-service log files / `qavor logs` — removed with the native supervisor; foreground commands write to the terminal.
 - ✅ Structured-log pretty-printing (`pino-pretty` on TTY; JSON via `--json`).
 
 **E. Documentation Generation**
@@ -295,15 +295,15 @@ profiles: [python_application]
 runtime:
   native:
     enabled: true
-    check_installed: { cmd: "uv --version" }
-    install:         { cmd: "echo 'install uv first' && exit 1" }
-    prepare:         { cmd: "uv sync --all-extras" }
-    run:             { cmd: "uv run uvicorn app.main:app --port ${PORT}" }
+    check_installed: { operations: { cmd: "uv --version" } }
+    install:         { operations: { cmd: "echo 'install uv first' && exit 1" } }
+    prepare:         { operations: { cmd: "uv sync --all-extras" } }
+    run:             { operations: { cmd: "uv run uvicorn app.main:app --port ${PORT}" } }
   docker:
     enabled: true
-    check_installed: { cmd: "docker --version" }
-    prepare:         { cmd: "docker build -t ${IMAGE_NAME} ." }
-    run:             { cmd: "docker run -it --rm ${IMAGE_NAME}" }
+    check_installed: { operations: { cmd: "docker --version" } }
+    prepare:         { operations: { cmd: "docker build -t ${IMAGE_NAME} ." } }
+    run:             { operations: { cmd: "docker run -it --rm ${IMAGE_NAME}" } }
 
 mode: native
 
@@ -353,14 +353,14 @@ name: python_application
 runtime:
   native:
     enabled: true
-    check_installed: { cmd: "uv --version" }
-    prepare:         { cmd: "uv sync --all-extras" }
-    run:             { cmd: "uv run uvicorn app.main:app --port ${PORT}" }
+    check_installed: { operations: { cmd: "uv --version" } }
+    prepare:         { operations: { cmd: "uv sync --all-extras" } }
+    run:             { operations: { cmd: "uv run uvicorn app.main:app --port ${PORT}" } }
   docker:
     enabled: true
-    check_installed: { cmd: "docker --version" }
-    prepare:         { cmd: "docker build -t ${IMAGE_NAME} ." }
-    run:             { cmd: "docker run -it --rm ${IMAGE_NAME}" }
+    check_installed: { operations: { cmd: "docker --version" } }
+    prepare:         { operations: { cmd: "docker build -t ${IMAGE_NAME} ." } }
+    run:             { operations: { cmd: "docker run -it --rm ${IMAGE_NAME}" } }
 
 mode: native
 
@@ -378,8 +378,7 @@ Implemented today:
 
 - `qavor init <project-repo-url-or-path>`, `qavor workspace info`, `qavor discover`
 - `qavor git clone | sync | status | commit | push` (all accept `--only`)
-- `qavor <command>` (any manifest-defined runtime command, e.g. `qavor prepare`, `qavor update_libraries`), `qavor commands` (list them), `qavor doctor`
-- `qavor up`, `qavor down`, `qavor logs`, `qavor ps`
+- `qavor <command>` (any manifest-defined runtime command, e.g. `qavor run`, `qavor prepare`, `qavor update_libraries`), `qavor commands` (list them), `qavor doctor`
 - `qavor validate`, `qavor manifests`, `qavor resolve-manifest`
 - `qavor env <service>`, `qavor resolve-env --only <service>`
 
@@ -398,7 +397,7 @@ Planned (see [mvp-tasks.md](./mvp-tasks.md#roadmap-not-yet-implemented)):
 The six original open questions are resolved in [decisions.md](./decisions.md):
 
 - **ADR-001** Implementation language → Node.js (TypeScript), Node 26+, distributed as a Single Executable Application. Asynchronous APIs throughout; all parallel fan-out is bounded (default `os.availableParallelism()`, override `--jobs N`).
-- **ADR-002** Process supervision → own minimal native supervisor + compose for containers / backing services.
+- **ADR-002** Process supervision → *superseded for native*: qavor no longer ships a native supervisor (a long-running service is a foreground `qavor run` manifest command); compose for containers / backing services remains planned.
 - **ADR-003** Container runtime → Docker only at v0; pluggable later.
 - **ADR-004** Bootstrap → project-repo seeded; `qavor init <project-repo-url>` writes the `kind: workspaces` pointer.
 - **ADR-005** Compose file ownership → generate-and-own with overlay overrides.

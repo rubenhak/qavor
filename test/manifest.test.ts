@@ -85,7 +85,8 @@ test('loader: multi-document YAML returns one doc per document', async () => {
         '  native:',
         '    enabled: true',
         '    run:',
-        '      cmd: "echo a"',
+        '      operations:',
+        '        - cmd: "echo a"',
         '---',
         'kind: service',
         'name: beta',
@@ -93,7 +94,8 @@ test('loader: multi-document YAML returns one doc per document', async () => {
         '  native:',
         '    enabled: true',
         '    run:',
-        '      cmd: "echo b"',
+        '      operations:',
+        '        - cmd: "echo b"',
         '',
       ].join('\n'),
     );
@@ -122,11 +124,13 @@ test('validator: list-form runtime step (multiple commands) passes', async () =>
         '  native:',
         '    enabled: true',
         '    prepare:',
-        '      - cmd: "echo one"',
-        '      - cmd: "echo two"',
-        '        cwd: sub',
+        '      operations:',
+        '        - cmd: "echo one"',
+        '        - cmd: "echo two"',
+        '          cwd: sub',
         '    run:',
-        '      cmd: "echo run"',
+        '      operations:',
+        '        - cmd: "echo run"',
         '',
       ].join('\n'),
     );
@@ -149,7 +153,8 @@ test('validator: empty list-form step and item missing cmd are rejected', async 
         'runtime:',
         '  native:',
         '    enabled: true',
-        '    prepare: []', // minItems: 1 — must fail
+        '    prepare:',
+        '      operations: []', // minItems: 1 — must fail
         '',
       ].join('\n'),
     );
@@ -166,7 +171,8 @@ test('validator: empty list-form step and item missing cmd are rejected', async 
         '  native:',
         '    enabled: true',
         '    prepare:',
-        '      - cwd: sub', // missing required `cmd`
+        '      operations:',
+        '        - cwd: sub', // missing required `cmd`
         '',
       ].join('\n'),
     );
@@ -300,9 +306,9 @@ test('validator: profile-merge directive on a command passes', async () => {
         'profiles: [base]',
         'runtime:',
         '  native:',
-        '    prepare: { $append: [ { cmd: "echo extra" } ] }',
-        '    lint: { $prepend: [ { cmd: "echo first" } ] }',
-        '    migrate: { $unset: true }',
+        '    prepare: { operations: { $append: [ { cmd: "echo extra" } ] } }',
+        '    lint: { operations: { $prepend: [ { cmd: "echo first" } ] } }',
+        '    migrate: { operations: { $unset: true } }',
         '',
       ].join('\n'),
     );
@@ -325,7 +331,7 @@ test('validator: malformed merge directives are rejected', async () => {
         'name: two',
         'runtime:',
         '  native:',
-        '    prepare: { $append: [ { cmd: a } ], $prepend: [ { cmd: b } ] }',
+        '    prepare: { operations: { $append: [ { cmd: a } ], $prepend: [ { cmd: b } ] } }',
         '',
       ].join('\n'),
     );
@@ -340,14 +346,15 @@ test('validator: malformed merge directives are rejected', async () => {
         'name: unset',
         'runtime:',
         '  native:',
-        '    prepare: { $unset: false }',
+        '    prepare: { operations: { $unset: false } }',
         '',
       ].join('\n'),
     );
     assert.equal(validateDocument((await loadManifestFile(badUnset))[0]!).ok, false);
 
-    // `run` is single-step only — directives are not allowed on it.
-    const runDirective = await writeYaml(
+    // A bare directive at the command level (not nested under `operations`) is
+    // rejected: every command must use the uniform `{ description?, operations }` shape.
+    const bareDirective = await writeYaml(
       dir,
       'run.yaml',
       [
@@ -359,7 +366,7 @@ test('validator: malformed merge directives are rejected', async () => {
         '',
       ].join('\n'),
     );
-    assert.equal(validateDocument((await loadManifestFile(runDirective))[0]!).ok, false);
+    assert.equal(validateDocument((await loadManifestFile(bareDirective))[0]!).ok, false);
   } finally {
     await cleanup(dir);
   }

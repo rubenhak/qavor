@@ -33,7 +33,8 @@ runtime:
   native:
     enabled: true
     run:
-      cmd: node .
+      operations:
+        - cmd: node .
 `;
 
 const CASE2_ROOT = `kind: project
@@ -49,7 +50,8 @@ runtime:
   native:
     enabled: true
     run:
-      cmd: node .
+      operations:
+        - cmd: node .
 `;
 }
 
