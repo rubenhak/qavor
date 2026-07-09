@@ -4,7 +4,7 @@ RUN node --version
 RUN npm --version
 
 RUN apk update && apk upgrade && \
-    apk --no-cache add g++ gcc libgcc libstdc++ linux-headers make bash git openssh yq
+    apk --no-cache add g++ gcc libgcc libstdc++ linux-headers make bash git openssh yq docker-cli docker-cli-compose
 
 RUN npm install -g pnpm
 
@@ -33,6 +33,18 @@ RUN ARCH="$(uname -m)" && \
     esac && \
     wget -qO /usr/local/bin/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${KIND_ARCH}" && \
     chmod +x /usr/local/bin/kind
+
+# kubectl — arch-detected binary
+ARG KUBECTL_VERSION=v1.34.0
+RUN ARCH="$(uname -m)" && \
+    case "$ARCH" in \
+      x86_64) KUBECTL_ARCH=amd64 ;; \
+      aarch64) KUBECTL_ARCH=arm64 ;; \
+      *) echo "unsupported arch: $ARCH" && exit 1 ;; \
+    esac && \
+    wget -qO /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl" && \
+    chmod +x /usr/local/bin/kubectl && \
+    kubectl version --client
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
