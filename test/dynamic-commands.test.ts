@@ -194,6 +194,60 @@ test('qavor <command> --help: shows the manifest description and declaring servi
   }
 });
 
+test('dynamic commands: injects QAVOR_WORKSPACE_DIR/PROJECT_DIR/SERVICE_DIR into steps', async () => {
+  const fixtures = await buildFixtureRepos({ services: ['web'] });
+  const ws = await makeTempDir('qavor-envdirs-');
+  try {
+    await setWebManifest(
+      fixtures.serviceRepos.web!,
+      [
+        'kind: service',
+        'name: web',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    probe:',
+        '      operations:',
+        '        - cmd: "printf \'%s\\n%s\\n%s\\n\' \\"$QAVOR_WORKSPACE_DIR\\" \\"$QAVOR_PROJECT_DIR\\" \\"$QAVOR_SERVICE_DIR\\" > env.marker"',
+        'mode: native',
+        '',
+      ].join('\n'),
+    );
+    await runCli(['init', fixtures.projectRepo, '--into', ws]);
+    await runCli(['git', 'clone'], { cwd: ws });
+
+    const res = await runCli(['probe', '--json'], { cwd: ws });
+    assert.equal(res.exitCode, 0, `probe failed: ${res.stderr}`);
+
+    const found = await execa('find', [ws, '-name', 'env.marker'], { reject: false });
+    const markerPath = found.stdout.trim();
+    assert.notEqual(markerPath, '', 'probe command should have written env.marker');
+    const [workspaceDir, projectDir, serviceDir] = (await fs.readFile(markerPath, 'utf8'))
+      .split('\n')
+      .map((l) => l.trim());
+
+    // All three are non-empty absolute paths.
+    for (const dir of [workspaceDir, projectDir, serviceDir]) {
+      assert.ok(dir && path.isAbsolute(dir), `expected an absolute path, got '${dir}'`);
+    }
+
+    // SERVICE_DIR is the directory the step ran in (where the marker landed).
+    assert.equal(await fs.realpath(serviceDir!), await fs.realpath(path.dirname(markerPath)));
+    // WORKSPACE_DIR points at the workspace root (holds the kind: workspaces pointer).
+    assert.equal(await fs.realpath(workspaceDir!), await fs.realpath(ws));
+    assert.match(
+      await fs.readFile(path.join(workspaceDir!, 'qavor.yaml'), 'utf8'),
+      /kind: workspaces/,
+    );
+    // PROJECT_DIR holds the kind: project manifest and differs from the service dir.
+    assert.match(await fs.readFile(path.join(projectDir!, 'qavor.yaml'), 'utf8'), /kind: project/);
+    assert.notEqual(await fs.realpath(projectDir!), await fs.realpath(serviceDir!));
+  } finally {
+    await cleanup(fixtures.base);
+    await cleanup(ws);
+  }
+});
+
 test('dynamic commands: an unknown command is a user error', async () => {
   const fixtures = await buildFixtureRepos({ services: ['web'] });
   const ws = await makeTempDir('qavor-unknown-');

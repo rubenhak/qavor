@@ -13,6 +13,8 @@ export interface RunCommandInput {
   /** The dynamic command name (e.g. `prepare`, `update_libraries`, `lint`). */
   command: string;
   paths: WorkspacePaths;
+  /** Absolute path to the project repo (holds the `kind: project` manifest). */
+  projectDir: string;
   serviceDoc: LoadedDocument;
   service: ServiceManifest;
   logger: Logger;
@@ -53,9 +55,17 @@ export async function runServiceCommand(input: RunCommandInput): Promise<RunComm
     ...(input.cliEnv ? { cliEnv: input.cliEnv } : {}),
   });
   assertNoIssues(envRes);
-  // Expose the running command name to steps and hooks so a single hook pair can
-  // branch per command.
-  const env = { ...toEnvObject(envRes), QAVOR_COMMAND: input.command };
+  // Expose the running command name plus the workspace/project/service locations
+  // to steps and hooks: a single hook pair can branch per command, and scripts
+  // can resolve paths without hard-coding them. These are computed by qavor and
+  // always win over any composed env of the same name.
+  const env = {
+    ...toEnvObject(envRes),
+    QAVOR_COMMAND: input.command,
+    QAVOR_WORKSPACE_DIR: input.paths.root,
+    QAVOR_PROJECT_DIR: input.projectDir,
+    QAVOR_SERVICE_DIR: manifestDir,
+  };
 
   await runHooks({
     hooks: input.service.hooks,

@@ -253,6 +253,13 @@ When the same env key is set in multiple places, **later layers win**. For a giv
 
 Profiles attached to a service are resolved before step 2 — each profile's own `env.common`/`env.native`/`env.docker` is layered in the order profiles are declared (later profiles win), and the manifest's own env wins over all of them.
 
+On top of the composed chain, every `qavor <command>` invocation injects a set of **qavor-computed variables** into the environment of each step and hook, so scripts can locate the workspace without hard-coding paths. These always win over a same-named composed value (they are set by qavor, not the manifest):
+
+- `QAVOR_COMMAND` — the running command name (e.g. `prepare`, `build`).
+- `QAVOR_WORKSPACE_DIR` — absolute path to the workspace root.
+- `QAVOR_PROJECT_DIR` — absolute path to the project repo (holds the `kind: project` manifest).
+- `QAVOR_SERVICE_DIR` — absolute path to the directory of the service's `qavor.yaml` (also the step's default `cwd`).
+
 `qavor env <service>` prints the fully-resolved value with provenance for each key, so this chain is always inspectable.
 
 ---

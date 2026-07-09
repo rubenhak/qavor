@@ -142,6 +142,7 @@ async function runDynamicCommand(
       const runOpts: Parameters<typeof runServiceCommand>[0] = {
         command,
         paths: ctx.ws.paths,
+        projectDir: ctx.ws.projectRepoPath,
         serviceDoc,
         service,
         logger,
