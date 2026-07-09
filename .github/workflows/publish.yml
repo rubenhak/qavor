@@ -135,19 +135,21 @@ jobs:
             QAVOR_VERSION=${{ steps.vars.outputs.version }}
           tags: |
             rubenhak/qavor:node${{ steps.vars.outputs.node_major }}-${{ steps.vars.outputs.version }}
+            rubenhak/qavor:node${{ steps.vars.outputs.node_major }}
             rubenhak/qavor:latest
 
       - name: Docker summary
         run: |
           V="${{ steps.vars.outputs.version }}"
-          T="node${{ steps.vars.outputs.node_major }}-${V}"
+          T1="node${{ steps.vars.outputs.node_major }}-${V}"
+          T2="node${{ steps.vars.outputs.node_major }}"
           {
             echo "## 🐳 Pushed to Docker Hub"
             echo ""
             echo "| | |"
             echo "|---|---|"
             echo "| **Image** | [\`rubenhak/qavor\`](https://hub.docker.com/r/rubenhak/qavor) |"
-            echo "| **Tags** | \`${T}\`, \`latest\` |"
+            echo "| **Tags** | \`${T1}\`, \`${T2}\`, \`latest\` |"
             echo "| **qavor** | \`${V}\` (from npm) |"
             echo "| **Platforms** | \`linux/amd64\`, \`linux/arm64\` |"
           } >> "$GITHUB_STEP_SUMMARY"
