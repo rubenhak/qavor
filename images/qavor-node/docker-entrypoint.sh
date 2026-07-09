@@ -19,3 +19,7 @@ echo
 echo ">>>>> yq <<<<<"
 yq --version
 echo
+
+echo ">>>>> QAVOR <<<<<"
+qavor --version
+echo

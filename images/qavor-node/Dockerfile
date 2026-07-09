@@ -16,6 +16,13 @@ RUN npm install mocha -g
 
 RUN npm install typescript -g
 
+# qavor CLI — installed from npm, pinned to the released version.
+# QAVOR_VERSION is passed at build time (see images/qavor-node/configuration.sh
+# and the docker job in .github/workflows/publish.yml); defaults to latest.
+ARG QAVOR_VERSION=latest
+RUN npm install -g qavor@${QAVOR_VERSION}
+RUN qavor --version
+
 # kind (Kubernetes IN Docker) — arch-detected binary
 ARG KIND_VERSION=v0.29.0
 RUN ARCH="$(uname -m)" && \
