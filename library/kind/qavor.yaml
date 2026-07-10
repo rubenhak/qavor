@@ -36,9 +36,18 @@ env:
     KIND_LOGS_TAIL:
       default: "100"
       description: Lines shown by `qavor logs` (control-plane container logs).
+    KIND_KUBECONFIG_FILE:
+      default: "runtime/kube-config.yaml"
+      description: Workspace-local kubeconfig kind writes to (isolated from ~/.kube/config). Relative to the service dir; published to dependents as an absolute path.
+  native:
+    # Every step runs with cwd = the service dir, so this relative path (and thus
+    # `kind create`, `kind delete`, and every `kubectl` here) targets the isolated
+    # kubeconfig. Dependents receive the absolute form via `publish` below.
+    KUBECONFIG: ${KIND_KUBECONFIG_FILE}
   publish:
     KIND_CLUSTER_NAME: ${KIND_CLUSTER_NAME}
     KUBECONFIG_CONTEXT: kind-${KIND_CLUSTER_NAME}
+    KUBECONFIG: ${QAVOR_SERVICE_DIR}/${KIND_KUBECONFIG_FILE}
 runtime:
   native:
     enabled: true
@@ -58,7 +67,8 @@ runtime:
               echo "kind cluster '$KIND_CLUSTER_NAME' already exists"
               exit 0
             fi
-            set -- --name "$KIND_CLUSTER_NAME" --image "$KIND_NODE_IMAGE" --wait "$KIND_WAIT_TIMEOUT"
+            mkdir -p "$(dirname "$KIND_KUBECONFIG_FILE")"
+            set -- --name "$KIND_CLUSTER_NAME" --image "$KIND_NODE_IMAGE" --wait "$KIND_WAIT_TIMEOUT" --kubeconfig "$KIND_KUBECONFIG_FILE"
             if [ -n "$KIND_CONFIG" ]; then set -- "$@" --config "$KIND_CONFIG"; fi
             kind create cluster "$@"
         - cmd: kubectl --context "kind-$KIND_CLUSTER_NAME" wait --for=condition=Ready nodes --all --timeout "$KIND_WAIT_TIMEOUT"

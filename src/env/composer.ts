@@ -133,7 +133,15 @@ export async function composeUnitEnv(input: UnitCompositionInput): Promise<Resol
   );
   // A backing service surfaces its own published contract on top of its env.
   if (entryEnvBlock(input.target)?.publish) {
-    layers.push(...(await resolvePublishLayers(input.target, input.mode, issues, 'env.publish')));
+    layers.push(
+      ...(await resolvePublishLayers(
+        input.target,
+        input.mode,
+        issues,
+        'env.publish',
+        input.workspaceRoot,
+      )),
+    );
   }
 
   // 3 + 4. Workspace .env then CLI overrides.
@@ -286,7 +294,13 @@ async function appendRequireLayers(
       const depMode: RunMode =
         (dep.data as { mode?: string }).mode === 'native' ? 'native' : 'docker';
       layers.push(
-        ...(await resolvePublishLayers(dep, depMode, issues, `require:${dep.name}.publish`)),
+        ...(await resolvePublishLayers(
+          dep,
+          depMode,
+          issues,
+          `require:${dep.name}.publish`,
+          ctx.workspaceRoot,
+        )),
       );
     } else {
       layers.push(
@@ -315,6 +329,7 @@ async function resolvePublishLayers(
   mode: RunMode,
   issues: ManifestComposeIssue[],
   label: string,
+  workspaceRoot: string,
 ): Promise<LayerEntry[]> {
   const env = entryEnvBlock(dep);
   const publish = env?.publish;
@@ -330,13 +345,27 @@ async function resolvePublishLayers(
   });
   const ownScope = interpolateLayers(ownLayers, []);
 
+  // Publish values may reference the publishing service's own location so a
+  // backing service can hand dependents an absolute path (e.g. a kubeconfig it
+  // writes under its own dir). These mirror the QAVOR_* vars exposed to command
+  // steps/hooks, but publish resolves at compose time — before a command runs —
+  // so we surface them here from the values known statically to the composer.
+  // QAVOR_PROJECT_DIR is intentionally omitted: it is not available in the
+  // composer. They layer as a process.env-style fallback so an explicitly
+  // declared same-named var still wins, matching how other ${VAR} refs resolve.
+  const qavorScope: NodeJS.ProcessEnv = {
+    ...process.env,
+    QAVOR_SERVICE_DIR: dep.dir,
+    QAVOR_WORKSPACE_DIR: workspaceRoot,
+  };
+
   const out: LayerEntry[] = [];
   for (const [key, val] of Object.entries(publish)) {
     const spec = isEnvSpec(val) ? (val as EnvSpec) : null;
     const concrete = spec ? (spec.value ?? spec.default) : val;
     if (typeof concrete === 'undefined') continue;
     const pos = dep.position(`/env/publish/${key}`);
-    const { value, missing, secrets } = interpolate(String(concrete), ownScope.values, process.env);
+    const { value, missing, secrets } = interpolate(String(concrete), ownScope.values, qavorScope);
     if (secrets.length > 0) {
       issues.push({
         file: pos.file,
