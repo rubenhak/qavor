@@ -3,11 +3,21 @@ import { type Options as ExecaOptions, execa } from 'execa';
 import { assertNoIssues, composeServiceEnv, toEnvObject } from '../env/composer.js';
 import type { LoadedDocument } from '../manifest/loader.js';
 import { serviceCommandSteps } from '../manifest/runtime.js';
+import {
+  composeStepOf,
+  describeStep,
+  dockerStepOf,
+  isCmdStep,
+  stepOriginDir,
+} from '../manifest/steps.js';
 import type { ServiceManifest } from '../manifest/types/index.js';
 import { RuntimeFailure } from '../util/exit-codes.js';
 import { runHooks } from '../util/hooks.js';
 import type { Logger } from '../util/logger.js';
 import type { WorkspacePaths } from '../workspace/paths.js';
+import { runComposeStep } from './compose-step.js';
+import { runDockerStep } from './docker-step.js';
+import type { DeclarativeStepContext } from './exec.js';
 
 export interface RunCommandInput {
   /** The dynamic command name (e.g. `prepare`, `update_libraries`, `lint`). */
@@ -82,36 +92,59 @@ export async function runServiceCommand(input: RunCommandInput): Promise<RunComm
   const stream = (input.verbose ?? false) && (input.serial ?? false);
 
   // Steps run in declaration order; the first non-zero exit aborts the rest.
-  // Each step carries its own cwd/shell.
+  // A step is either a shell `cmd` step (run via the shell, which expands its
+  // own variables) or a declarative `compose`/`docker` step (qavor interpolates
+  // ${VAR} itself and shells out to docker). Relative paths (cwd, compose file)
+  // resolve against the step's defining manifest — the profile's directory for
+  // profile-contributed steps — with the service manifest's dir as fallback.
   for (const [index, step] of steps.entries()) {
     const stepLabel = steps.length > 1 ? ` (step ${index + 1}/${steps.length})` : '';
+    const stepDir = stepOriginDir(step) ?? manifestDir;
+    const stepEnv = { ...env, QAVOR_MANIFEST_DIR: stepDir };
     input.logger.info(
       {
         service: input.service.name,
         command: input.command,
-        cmd: step.cmd,
+        cmd: describeStep(step),
         step: index + 1,
         steps: steps.length,
       },
       `${input.command}: starting`,
     );
 
-    const cwd = step.cwd ? path.resolve(manifestDir, step.cwd) : manifestDir;
-    const shell = step.shell ?? '/bin/sh';
-    const opts: ExecaOptions = {
-      cwd,
-      env: { ...process.env, ...env },
-      stdio: stream ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'ignore', 'ignore'],
-      ...(input.signal ? { cancelSignal: input.signal } : {}),
-      reject: false,
-    };
     try {
-      const res = await execa(shell, ['-c', step.cmd], opts);
-      if (res.exitCode !== 0) {
-        throw new RuntimeFailure(
-          `${input.command} failed for ${input.service.name}${stepLabel} (exit ${res.exitCode}).` +
-            (stream ? '' : ' Re-run with --serial --verbose to see the command output.'),
-        );
+      if (isCmdStep(step)) {
+        const cwd = step.cwd ? path.resolve(stepDir, step.cwd) : stepDir;
+        const shell = step.shell ?? '/bin/sh';
+        const opts: ExecaOptions = {
+          cwd,
+          env: { ...process.env, ...stepEnv },
+          stdio: stream ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'ignore', 'ignore'],
+          ...(input.signal ? { cancelSignal: input.signal } : {}),
+          reject: false,
+        };
+        const res = await execa(shell, ['-c', step.cmd], opts);
+        if (res.exitCode !== 0) {
+          throw new RuntimeFailure(
+            `${input.command} failed for ${input.service.name}${stepLabel} (exit ${res.exitCode}).` +
+              (stream ? '' : ' Re-run with --serial --verbose to see the command output.'),
+          );
+        }
+      } else {
+        const ctx: DeclarativeStepContext = {
+          serviceName: input.service.name,
+          command: input.command,
+          stepDir,
+          env: { ...process.env, ...stepEnv },
+          stream,
+          logger: input.logger,
+          ...(input.signal ? { signal: input.signal } : {}),
+        };
+        const compose = composeStepOf(step);
+        const docker = dockerStepOf(step);
+        if (compose) await runComposeStep(compose, ctx);
+        else if (docker) await runDockerStep(docker, ctx);
+        else throw new RuntimeFailure(`Unrecognized step shape${stepLabel}.`);
       }
     } catch (err) {
       if (err instanceof RuntimeFailure) throw err;

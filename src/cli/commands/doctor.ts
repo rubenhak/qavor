@@ -5,6 +5,7 @@ import { execa } from 'execa';
 import { buildWorkspaceRegistry } from '../../manifest/discovery.js';
 import { type LoadedDocument, loadManifestFile } from '../../manifest/loader.js';
 import { normalizeCommandValue } from '../../manifest/runtime.js';
+import { isCmdStep, stepOriginDir } from '../../manifest/steps.js';
 import type { ProjectManifest, ServiceManifest } from '../../manifest/types/index.js';
 import { formatIssue } from '../../manifest/validator.js';
 import { resolveJobs } from '../../util/concurrency.js';
@@ -163,10 +164,15 @@ export function registerDoctor(program: Command): void {
           const docs = await loadManifestFile(entry.file);
           const serviceDoc = docs[entry.docIndex] as LoadedDocument;
           const manifestDir = path.dirname(serviceDoc.file);
-          // All steps must pass; the first non-zero exit is the failure.
+          // All steps must pass; the first non-zero exit is the failure. The
+          // probe is a lightweight shell runner, so only `cmd` steps execute —
+          // declarative compose/docker steps have no place in a toolchain probe
+          // and are skipped.
           let failure: { exitCode: number; index: number } | undefined;
           for (const [index, step] of checkSteps.entries()) {
-            const cwd = step.cwd ? path.resolve(manifestDir, step.cwd) : manifestDir;
+            if (!isCmdStep(step)) continue;
+            const stepDir = stepOriginDir(step) ?? manifestDir;
+            const cwd = step.cwd ? path.resolve(stepDir, step.cwd) : stepDir;
             const res = await runShell(step.cmd, cwd);
             if (!res.ok) {
               failure = { exitCode: res.exitCode, index };
@@ -176,7 +182,9 @@ export function registerDoctor(program: Command): void {
           if (!failure) {
             checks.push({ name: `service ${entry.name}: check_installed`, status: 'ok' });
           } else {
-            const installHint = normalizeCommandValue(svc.runtime?.native?.install)[0]?.cmd;
+            const installHint = normalizeCommandValue(svc.runtime?.native?.install).find(
+              isCmdStep,
+            )?.cmd;
             const stepLabel =
               checkSteps.length > 1 ? ` (step ${failure.index + 1}/${checkSteps.length})` : '';
             const failCheck: Check = {

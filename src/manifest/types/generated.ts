@@ -46,7 +46,7 @@ export type ProjectRepoEntry = {
  */
 export type ProfileRef = Name | ProfileSourceUri | ProfileSource;
 /**
- * Remote profile source as a single string. Supported forms: an https URL to a YAML profile document; a GitHub blob/raw URL or `github:<owner>/<repo>//<path>[@<ref>]` shorthand; a git repo ref `git@host:owner/repo.git//<path>[@<ref>]` (or `ssh://` / `https://….git//<path>`); or a `file://` path. An optional `#sha256=<64 hex>` fragment pins the fetched content.
+ * Remote profile source as a single string. Supported forms: an https URL to a YAML profile document; a GitHub blob/raw URL or `github:<owner>/<repo>//<path>[@<ref>]` shorthand; a git repo ref `git@host:owner/repo.git//<path>[@<ref>]` (or `ssh://` / `https://….git//<path>`); or a `file://` path. A path that does not end in `.yaml`/`.yml` is a **directory reference**: the profile is read from `<path>/qavor.yaml` and the entire directory (compose files, configs, …) is materialized locally so the profile's steps can reference sibling files. Directory references are supported for GitHub (`github:` shorthand or a `/tree/<ref>/` page URL), git, and file sources — not for plain https URLs, which cannot be enumerated. An optional `#sha256=<64 hex>` fragment pins the fetched profile document (`qavor.yaml` for directory references).
  */
 export type ProfileSourceUri = string;
 /**
@@ -61,6 +61,17 @@ export type RuntimeStepOrMerge =
   | [RuntimeStep, ...RuntimeStep[]]
   | RuntimeMergeDirective;
 /**
+ * A single step in a command's `operations`. A step carries exactly one step kind: a shell `cmd` step (the classic form, written as a bare `{ cmd, cwd?, env?, shell? }` object), a declarative `compose` step (`{ compose: { action, … } }`, runs `docker compose`), or a declarative `docker` step (`{ docker: { action, name, … } }`, manages a single container). Steps are the atoms that make up a command's `operations` list; they run in declaration order and the first failure aborts the rest.
+ */
+export type RuntimeStep =
+  | CmdStep
+  | {
+      compose: ComposeStep;
+    }
+  | {
+      docker: DockerStep;
+    };
+/**
  * Scalar value usable on the right-hand side of an env entry. Strings support ${VAR} and ${secret:NAME} interpolation.
  */
 export type EnvScalar = string | number | boolean;
@@ -74,7 +85,7 @@ export type RuntimeMergeDirective = {
   $unset?: true;
 } & RuntimeMergeDirective1;
 /**
- * A step value used inside a command's `operations`: either a single step object, or a list of step objects run in sequence. Each list entry is a full step (its own `cmd`/`cwd`/`env`/`shell`); steps run in declaration order and the first non-zero exit aborts the rest. The single-object form (`operations: { cmd: "…" }`) and the list form (`operations: [{ cmd: "…" }, { cmd: "…" }]`) are interchangeable.
+ * A step value used inside a command's `operations`: either a single step object, or a list of step objects run in sequence. Each list entry is a full step of any kind (`cmd`, `compose`, or `docker`); steps run in declaration order and the first non-zero exit aborts the rest. The single-object form (`operations: { cmd: "…" }`) and the list form (`operations: [{ cmd: "…" }, { compose: { action: "up" } }]`) are interchangeable.
  */
 export type RuntimeStepOrList = RuntimeStep | [RuntimeStep, ...RuntimeStep[]];
 export type RuntimeMergeDirective1 = {
@@ -203,7 +214,7 @@ export interface ServiceManifest {
 export interface ProfileSource {
   name?: Name;
   /**
-   * Source URI. Same forms as a `profileSourceUri` string (https / GitHub / git / file).
+   * Source URI. Same forms as a `profileSourceUri` string (https / GitHub / git / file), including directory references (a path not ending in `.yaml`/`.yml` reads `<path>/qavor.yaml` and materializes the whole directory).
    */
   url: string;
   /**
@@ -249,15 +260,15 @@ export interface RuntimeDescribedCommand {
   operations: RuntimeStepOrMerge;
 }
 /**
- * A single shell step: one `cmd` plus optional `cwd`/`env`/`shell`. Steps are the atoms that make up a command's `operations` list.
+ * A shell step: one `cmd` plus optional `cwd`/`env`/`shell`. `${VAR}` references in `cmd` are expanded by the shell at run time against the composed service env.
  */
-export interface RuntimeStep {
+export interface CmdStep {
   /**
    * Shell command. Multiline strings are treated as a script.
    */
   cmd: string;
   /**
-   * Working directory relative to the manifest file.
+   * Working directory relative to the defining manifest (the profile's own directory when the step comes from a profile).
    */
   cwd?: string;
   env?: EnvMap;
@@ -287,6 +298,197 @@ export interface EnvSpec {
   pattern?: string;
   secret?: boolean;
   description?: string;
+}
+/**
+ * Declarative `docker compose` step. qavor interpolates `${VAR}` in every string field from the composed service env (fail-closed on unresolved names), resolves `file`/`env_file`/`cwd` against the defining manifest's directory (the profile's own directory when the step comes from a profile — remote profile directories are materialized locally), and shells out to `docker compose`. The composed env is passed to the process, so the compose file itself may use `${VAR}` interpolation natively.
+ */
+export interface ComposeStep {
+  /**
+   * Compose action. `up` always runs detached (`-d`); `down` keeps named volumes unless `volumes: true`.
+   */
+  action: 'up' | 'down' | 'stop' | 'start' | 'restart' | 'ps' | 'logs' | 'pull' | 'build';
+  /**
+   * Compose file path(s) relative to the defining manifest's directory. Defaults to `./docker-compose.yaml`. A list maps to repeated `-f` flags.
+   */
+  file?: string | [string, ...string[]];
+  /**
+   * Compose project name (`-p`). Defaults to `qavor-<service-name>`.
+   */
+  project?: string;
+  /**
+   * Compose profiles to enable (repeated `--profile`).
+   */
+  profiles?: string[];
+  /**
+   * Scope the action to these compose services (appended after the action's flags).
+   */
+  services?: string[];
+  /**
+   * Extra env file path(s) relative to the defining manifest's directory (repeated `--env-file`).
+   */
+  env_file?: string | [string, ...string[]];
+  /**
+   * up: wait until services are running/healthy (`--wait`).
+   */
+  wait?: boolean;
+  /**
+   * Seconds. up: `--wait-timeout`; down/stop/restart: `--timeout`.
+   */
+  timeout?: number | string;
+  /**
+   * up: build images before starting (`--build`).
+   */
+  build?: boolean;
+  /**
+   * up: recreate containers even if unchanged (`--force-recreate`).
+   */
+  force_recreate?: boolean;
+  /**
+   * up/down: remove containers for services no longer in the file (`--remove-orphans`).
+   */
+  remove_orphans?: boolean;
+  /**
+   * down: also remove named volumes (`-v`) — destroys data.
+   */
+  volumes?: boolean;
+  /**
+   * logs: number of trailing lines (`--tail`).
+   */
+  tail?: number | string;
+  /**
+   * logs: follow output (`-f`). Blocks until interrupted; use with `--serial --verbose`.
+   */
+  follow?: boolean;
+  /**
+   * Raw extra arguments appended after the action's flags — escape hatch for anything not modeled above.
+   */
+  args?: string[];
+  /**
+   * Working directory relative to the defining manifest. Defaults to the defining manifest's directory.
+   */
+  cwd?: string;
+}
+/**
+ * Declarative single-container `docker` step. qavor interpolates `${VAR}` in every string field from the composed service env (fail-closed) and shells out to `docker`. `up` is idempotent ensure-running: `docker run -d` if the container is absent, `docker start` if stopped, no-op if already running. `down` stops and removes the container; named volumes are kept unless listed in `remove_volumes`.
+ */
+export interface DockerStep {
+  /**
+   * Container action. `up`/`down` are the idempotent lifecycle pair; `run`/`start`/`stop`/`restart`/`rm` are the raw docker primitives; `status` prints the container's current state.
+   */
+  action: 'up' | 'down' | 'run' | 'start' | 'stop' | 'restart' | 'rm' | 'logs' | 'status';
+  /**
+   * Container name.
+   */
+  name: string;
+  /**
+   * Image reference for `up`/`run`. Pin exact tags — avoid floating `latest`.
+   */
+  image?: string;
+  /**
+   * Port mappings (repeated `-p host:container`).
+   */
+  ports?: string[];
+  /**
+   * Container environment variables (repeated `-e`).
+   */
+  env?: {
+    [k: string]: (string | number | boolean) | undefined;
+  };
+  /**
+   * Volume mounts (repeated `-v`, e.g. `myvol:/data`).
+   */
+  volumes?: string[];
+  /**
+   * Network to attach to (`--network`).
+   */
+  network?: string;
+  /**
+   * Override the image entrypoint (`--entrypoint`, a single executable per the docker CLI).
+   */
+  entrypoint?: string;
+  /**
+   * Command run after the image name. A string is split on whitespace; use the list form for arguments containing spaces.
+   */
+  command?: string | string[];
+  /**
+   * `--user`.
+   */
+  user?: string;
+  /**
+   * `--workdir`.
+   */
+  workdir?: string;
+  /**
+   * Restart policy (`--restart`), e.g. `no`, `always`, `unless-stopped`, `on-failure`.
+   */
+  restart?: string;
+  /**
+   * Container labels (repeated `--label key=value`).
+   */
+  labels?: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * `--platform`, e.g. `linux/amd64`.
+   */
+  platform?: string;
+  /**
+   * Image pull policy for `run` (`--pull`).
+   */
+  pull?: 'always' | 'missing' | 'never';
+  /**
+   * run/up: run detached (`-d`). Almost always true for services.
+   */
+  detach?: boolean;
+  /**
+   * Container healthcheck flags. `wait: true` polls this health status.
+   */
+  healthcheck?: {
+    /**
+     * Health command (`--health-cmd`).
+     */
+    test?: string;
+    /**
+     * `--health-interval`, e.g. `2s`.
+     */
+    interval?: string;
+    /**
+     * `--health-retries`.
+     */
+    retries?: number | string;
+    /**
+     * `--health-timeout`.
+     */
+    timeout?: string;
+    /**
+     * `--health-start-period`.
+     */
+    start_period?: string;
+  };
+  /**
+   * up/run: after starting, poll the container until healthy (or simply running when it defines no healthcheck).
+   */
+  wait?: boolean;
+  /**
+   * Seconds. Wait-poll deadline for `wait: true`; grace period for stop/restart (`-t`).
+   */
+  timeout?: number | string;
+  /**
+   * down/rm: also `docker volume rm -f` these named volumes — destroys data.
+   */
+  remove_volumes?: string[];
+  /**
+   * logs: number of trailing lines (`--tail`).
+   */
+  tail?: number | string;
+  /**
+   * logs: follow output (`-f`). Blocks until interrupted; use with `--serial --verbose`.
+   */
+  follow?: boolean;
+  /**
+   * Raw extra arguments spliced in before the image (`run`) or container name — escape hatch.
+   */
+  args?: string[];
 }
 /**
  * Layered env block. `common` always applies; `native` or `docker` is layered on top depending on the active run mode. `publish` (optional) is the explicit contract a backing service exposes to its dependents at start time — when present, dependents receive only the published keys instead of the service's full composed env. See the proposal section on Manifest Resolution Order for the full precedence chain.

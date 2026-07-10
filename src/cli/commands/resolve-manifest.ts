@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { stringify } from 'yaml';
 import { buildWorkspaceRegistry, reportRegistryIssues } from '../../manifest/discovery.js';
-import { findManifest } from '../../manifest/resolve.js';
+import { findManifest, stripStepOrigins } from '../../manifest/resolve.js';
 import type { ManifestKind, ProjectManifest } from '../../manifest/types/index.js';
 import { resolveJobs } from '../../util/concurrency.js';
 import { UserError } from '../../util/exit-codes.js';
@@ -86,12 +86,15 @@ export function registerResolveManifest(program: Command): void {
         'manifest resolved',
       );
 
+      // Internal step-origin annotations ($dir) are execution plumbing, not
+      // manifest content — strip them from the user-facing dump.
+      const data = stripStepOrigins(target.data);
       if (format === 'json') {
-        emitJson(target.data);
+        emitJson(data);
         return;
       }
       // stringify always ends with a trailing newline; emit adds one of its own,
       // so trim to avoid a blank line.
-      emit(stringify(target.data).replace(/\n$/, ''));
+      emit(stringify(data).replace(/\n$/, ''));
     });
 }
