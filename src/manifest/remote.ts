@@ -43,6 +43,14 @@ interface RemoteSource {
   gitSubpath?: string;
   /** Git ref (branch/tag/commit) for git sources. */
   gitRef?: string;
+  /**
+   * Directory-form source (path does not end in `.yaml`/`.yml`): the profile is
+   * read from `<path>/qavor.yaml` and the whole directory is materialized so the
+   * profile's steps can reference sibling files (compose files, configs).
+   */
+  dirForm?: boolean;
+  /** Structured GitHub coordinates (github backend only). */
+  gh?: { owner: string; repo: string; ref?: string; subpath: string };
   /** Optional sha256 pin as lowercase hex (fragment or `integrity` field). */
   pin?: string;
   /** Env var holding a bearer token (http/github). */
@@ -53,6 +61,18 @@ interface RemoteSource {
   label: string;
   /** Dedup identity: same key ⇒ same fetched document. */
   key: string;
+}
+
+/** The conventional profile filename inside a directory-form source. */
+const DIR_PROFILE_FILE = 'qavor.yaml';
+
+/** Safety caps for GitHub directory fetches. */
+const MAX_DIR_FILES = 100;
+const MAX_DIR_BYTES = 10 * 1024 * 1024;
+
+/** A source path that does not name a YAML document is a directory reference. */
+function isDirPath(p: string): boolean {
+  return !/\.ya?ml$/i.test(p);
 }
 
 export type ClassifiedRef =
@@ -106,23 +126,54 @@ function parseSource(
   }
   if (url.startsWith('file://')) {
     const p = fileURLToPath(url);
-    return { ...base, backend: 'file', target: p, key: `file:${p}` };
+    return { ...base, backend: 'file', target: p, dirForm: isDirPath(p), key: `file:${p}` };
   }
   if (url.startsWith('github:')) {
-    const gh = normalizeGithub(url, inlineRef);
-    return { ...base, backend: 'github', target: gh, key: `github:${gh}` };
+    return githubSource(parseGithub(url, inlineRef), base);
   }
   if (url.startsWith('http://') || url.startsWith('https://')) {
-    if (/^https?:\/\/(www\.)?github\.com\//.test(url) && url.includes('/blob/')) {
-      const gh = normalizeGithub(url, inlineRef);
-      return { ...base, backend: 'github', target: gh, key: `github:${gh}` };
+    if (
+      /^https?:\/\/(www\.)?github\.com\//.test(url) &&
+      (url.includes('/blob/') || url.includes('/tree/'))
+    ) {
+      return githubSource(parseGithub(url, inlineRef), base);
+    }
+    if (url.startsWith('https://raw.githubusercontent.com/')) {
+      return githubSource(parseGithub(url, inlineRef), base);
+    }
+    // Plain https cannot enumerate a directory — only a direct YAML document
+    // reference is supported. Directory references need github:/git/file.
+    if (isDirPath(new URL(url).pathname)) {
+      throw new ManifestError(
+        `Directory profile sources are not supported for plain https URLs (${url}). ` +
+          `Point at the qavor.yaml document directly, or use a github:/git/file:// source.`,
+      );
     }
     return { ...base, backend: 'http', target: url, key: `http:${url}` };
   }
   // No scheme: only reachable via the long-form object `url`. Treat as a local
   // file path relative to the referencing manifest.
   const p = path.resolve(baseDir, url);
-  return { ...base, backend: 'file', target: p, key: `file:${p}` };
+  return { ...base, backend: 'file', target: p, dirForm: isDirPath(p), key: `file:${p}` };
+}
+
+/** Build a github-backend source from parsed coordinates. */
+function githubSource(
+  gh: NonNullable<RemoteSource['gh']>,
+  base: Pick<RemoteSource, 'pin' | 'tokenEnv' | 'expectedName' | 'label'>,
+): RemoteSource {
+  const dirForm = isDirPath(gh.subpath);
+  const canonical = `${gh.owner}/${gh.repo}/${gh.ref ?? 'HEAD'}/${gh.subpath}`;
+  return {
+    ...base,
+    backend: 'github',
+    // File-form target is the raw-content URL consumed by the http fetcher;
+    // directory-form fetches derive URLs from the structured coordinates.
+    target: `https://raw.githubusercontent.com/${canonical}`,
+    gh,
+    dirForm,
+    key: `github:${canonical}`,
+  };
 }
 
 function normalizePin(raw: string | undefined): string | undefined {
@@ -132,32 +183,55 @@ function normalizePin(raw: string | undefined): string | undefined {
 }
 
 /**
- * Normalize a GitHub reference to a `raw.githubusercontent.com` URL.
- *  - `github:owner/repo//path[@ref]`
- *  - `https://github.com/owner/repo/blob/<ref>/<path>`
- *  - `https://raw.githubusercontent.com/...` (passthrough)
+ * Parse a GitHub reference into structured coordinates.
+ *  - `github:owner/repo//path[@ref]` (path may be a file or a directory)
+ *  - `https://github.com/owner/repo/blob/<ref>/<path>` (file)
+ *  - `https://github.com/owner/repo/tree/<ref>/<path>` (directory)
+ *  - `https://raw.githubusercontent.com/owner/repo/<ref>/<path>`
  */
-function normalizeGithub(url: string, inlineRef: string | undefined): string {
-  if (url.startsWith('https://raw.githubusercontent.com/')) return url;
+function parseGithub(url: string, inlineRef: string | undefined): NonNullable<RemoteSource['gh']> {
   if (url.startsWith('github:')) {
     const rest = url.slice('github:'.length);
     const sep = rest.indexOf('//');
     if (sep < 0) throw new ManifestError(`GitHub profile source needs '//<path>': ${url}`);
-    const repo = rest.slice(0, sep).replace(/\.git$/, '');
-    let subpath = rest.slice(sep + 2);
+    const repoPart = rest.slice(0, sep).replace(/\.git$/, '');
+    const slash = repoPart.indexOf('/');
+    if (slash <= 0) throw new ManifestError(`GitHub profile source needs '<owner>/<repo>': ${url}`);
+    const owner = repoPart.slice(0, slash);
+    const repo = repoPart.slice(slash + 1);
+    let subpath = rest.slice(sep + 2).replace(/\/+$/, '');
     let ref = inlineRef;
     const at = subpath.lastIndexOf('@');
     if (at >= 0) {
       ref = subpath.slice(at + 1);
       subpath = subpath.slice(0, at);
     }
-    return `https://raw.githubusercontent.com/${repo}/${ref ?? 'HEAD'}/${subpath}`;
+    if (subpath.length === 0) {
+      throw new ManifestError(`GitHub profile source needs '//<path>': ${url}`);
+    }
+    return { owner, repo, ...(ref ? { ref } : {}), subpath };
   }
-  // https://github.com/<owner>/<repo>/blob/<ref>/<path...>
-  const m = /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/.exec(url);
+  const raw = /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/.exec(url);
+  if (raw) {
+    const [, owner, repo, ref, subpath] = raw;
+    return {
+      owner: owner as string,
+      repo: repo as string,
+      ref: (inlineRef ?? ref) as string,
+      subpath: (subpath as string).replace(/\/+$/, ''),
+    };
+  }
+  // https://github.com/<owner>/<repo>/(blob|tree)/<ref>/<path...>
+  const m =
+    /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/(?:blob|tree)\/([^/]+)\/(.+)$/.exec(url);
   if (!m) throw new ManifestError(`Unrecognized GitHub profile URL: ${url}`);
   const [, owner, repo, ref, subpath] = m;
-  return `https://raw.githubusercontent.com/${owner}/${repo}/${inlineRef ?? ref}/${subpath}`;
+  return {
+    owner: owner as string,
+    repo: repo as string,
+    ref: (inlineRef ?? ref) as string,
+    subpath: (subpath as string).replace(/\/+$/, ''),
+  };
 }
 
 function gitSource(
@@ -178,12 +252,14 @@ function gitSource(
     subpath = subpath.slice(0, at);
   }
   if (subpath.length === 0) throw new ManifestError(`git profile source needs '//<path>': ${url}`);
+  subpath = subpath.replace(/\/+$/, '');
   return {
     ...base,
     backend: 'git',
     target: repo,
     gitSubpath: subpath,
     gitRef: ref,
+    dirForm: isDirPath(subpath),
     key: `git:${repo}//${subpath}@${ref ?? ''}`,
   };
 }
@@ -381,23 +457,63 @@ async function fetchContent(
     case 'file':
       return fetchFile(source);
     case 'http':
-    case 'github':
       return fetchHttp(source, cacheRoot, env, opts);
+    case 'github':
+      return source.dirForm
+        ? fetchGithubDir(source, cacheRoot, env, opts)
+        : fetchHttp(source, cacheRoot, env, opts);
     case 'git':
       return fetchGit(source, cacheRoot, opts);
   }
 }
 
 async function fetchFile(source: RemoteSource): Promise<FetchedContent> {
+  const profilePath = source.dirForm ? path.join(source.target, DIR_PROFILE_FILE) : source.target;
   try {
-    const content = await fs.readFile(source.target, 'utf8');
-    return { content, dir: path.dirname(source.target) };
+    const content = await fs.readFile(profilePath, 'utf8');
+    return { content, dir: source.dirForm ? source.target : path.dirname(profilePath) };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new RuntimeFailure(`Local profile source not found: ${source.target}`);
+      throw new RuntimeFailure(`Local profile source not found: ${profilePath}`);
     }
     throw err;
   }
+}
+
+/** Bearer-token headers for http/github sources; fails when the env var is unset. */
+function authHeaders(source: RemoteSource, env: NodeJS.ProcessEnv): Record<string, string> {
+  if (!source.tokenEnv) return {};
+  const token = env[source.tokenEnv];
+  if (!token) {
+    throw new UserError(
+      `Auth env '${source.tokenEnv}' for profile '${redact(source.label)}' is not set.`,
+    );
+  }
+  return { Authorization: `Bearer ${token}` };
+}
+
+/** One timeout-bounded GET; network errors and non-2xx map to RuntimeFailure. */
+async function httpGet(
+  url: string,
+  headers: Record<string, string>,
+  opts: RemoteProfileOptions,
+): Promise<Response> {
+  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
+  let res: Response;
+  try {
+    res = await fetch(url, { headers, redirect: 'follow', signal });
+  } catch (err) {
+    throw new RuntimeFailure(
+      `Failed to fetch profile '${redact(url)}': ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (!res.ok) {
+    throw new RuntimeFailure(
+      `Failed to fetch profile '${redact(url)}': HTTP ${res.status} ${res.statusText}.`,
+    );
+  }
+  return res;
 }
 
 async function fetchHttp(
@@ -427,35 +543,122 @@ async function fetchHttp(
     );
   }
 
-  const headers: Record<string, string> = {};
-  if (source.tokenEnv) {
-    const token = env[source.tokenEnv];
-    if (!token) {
-      throw new UserError(
-        `Auth env '${source.tokenEnv}' for profile '${redact(source.target)}' is not set.`,
-      );
-    }
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
-  const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
-  let res: Response;
-  try {
-    res = await fetch(source.target, { headers, redirect: 'follow', signal });
-  } catch (err) {
-    throw new RuntimeFailure(
-      `Failed to fetch profile '${redact(source.target)}': ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  if (!res.ok) {
-    throw new RuntimeFailure(
-      `Failed to fetch profile '${redact(source.target)}': HTTP ${res.status} ${res.statusText}.`,
-    );
-  }
+  const res = await httpGet(source.target, authHeaders(source, env), opts);
   const content = await res.text();
   await ensureDir(cacheDir);
   await fs.writeFile(cacheFile, content, 'utf8');
+  return { content, dir: cacheDir };
+}
+
+/** Shape of the GitHub git-trees API response (fields we consume). */
+interface GithubTree {
+  truncated?: boolean;
+  tree?: { path?: string; type?: string; size?: number }[];
+}
+
+/**
+ * Materialize a GitHub directory source: list the repo tree via the GitHub API,
+ * download every blob under the referenced directory from raw.githubusercontent
+ * into a per-source cache directory, and read `<dir>/qavor.yaml` as the profile.
+ * A cached copy (keyed by owner/repo/ref/path) is reused until `--refresh`.
+ */
+async function fetchGithubDir(
+  source: RemoteSource,
+  cacheRoot: string,
+  env: NodeJS.ProcessEnv,
+  opts: RemoteProfileOptions,
+): Promise<FetchedContent> {
+  const gh = source.gh;
+  if (!gh) throw new RuntimeFailure(`GitHub source '${redact(source.label)}' missing coordinates.`);
+  const cacheDir = path.join(cacheRoot, 'profiles', sha256Hex(source.key).slice(0, 16));
+  const profilePath = path.join(cacheDir, DIR_PROFILE_FILE);
+
+  if (!opts.refresh && (await pathExists(profilePath))) {
+    const cached = await fs.readFile(profilePath, 'utf8');
+    if (!source.pin || sha256Hex(cached) === source.pin) {
+      return { content: cached, dir: cacheDir };
+    }
+  }
+  if (opts.offline) {
+    throw new RuntimeFailure(
+      `Offline: no cached copy of profile directory '${redact(source.label)}'.`,
+    );
+  }
+
+  const headers = { Accept: 'application/vnd.github+json', ...authHeaders(source, env) };
+
+  // Resolve the ref: an explicit @ref wins; otherwise the repo's default branch.
+  let ref = gh.ref;
+  if (!ref) {
+    const meta = await httpGet(
+      `https://api.github.com/repos/${gh.owner}/${gh.repo}`,
+      headers,
+      opts,
+    );
+    ref = ((await meta.json()) as { default_branch?: string }).default_branch ?? 'HEAD';
+  }
+
+  const treeRes = await httpGet(
+    `https://api.github.com/repos/${gh.owner}/${gh.repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
+    headers,
+    opts,
+  );
+  const tree = (await treeRes.json()) as GithubTree;
+  if (tree.truncated) {
+    throw new RuntimeFailure(
+      `GitHub tree listing for '${redact(source.label)}' is truncated; the repository is too large to enumerate. Use a git source instead.`,
+    );
+  }
+  const prefix = `${gh.subpath}/`;
+  const blobs = (tree.tree ?? []).filter(
+    (e) => e.type === 'blob' && typeof e.path === 'string' && e.path.startsWith(prefix),
+  );
+  if (blobs.length === 0) {
+    throw new RuntimeFailure(
+      `GitHub directory '${redact(source.label)}' does not exist or contains no files at ref '${ref}'.`,
+    );
+  }
+  if (blobs.length > MAX_DIR_FILES) {
+    throw new RuntimeFailure(
+      `GitHub directory '${redact(source.label)}' has ${blobs.length} files (limit ${MAX_DIR_FILES}). Use a git source instead.`,
+    );
+  }
+  const totalBytes = blobs.reduce((sum, e) => sum + (e.size ?? 0), 0);
+  if (totalBytes > MAX_DIR_BYTES) {
+    throw new RuntimeFailure(
+      `GitHub directory '${redact(source.label)}' is ${totalBytes} bytes (limit ${MAX_DIR_BYTES}). Use a git source instead.`,
+    );
+  }
+  if (!blobs.some((e) => e.path === `${gh.subpath}/${DIR_PROFILE_FILE}`)) {
+    throw new RuntimeFailure(
+      `GitHub directory '${redact(source.label)}' has no ${DIR_PROFILE_FILE} at ref '${ref}'.`,
+    );
+  }
+
+  // Refresh means a clean slate: never leave stale siblings behind.
+  await fs.rm(cacheDir, { recursive: true, force: true });
+  await ensureDir(cacheDir);
+  await pMap(
+    blobs,
+    async (entry) => {
+      const rel = (entry.path as string).slice(prefix.length);
+      // Tree paths come from the API, but stay defensive about traversal.
+      if (rel.split('/').some((seg) => seg === '..' || seg === '')) {
+        throw new RuntimeFailure(`Unsafe path in GitHub tree: ${entry.path}`);
+      }
+      const res = await httpGet(
+        `https://raw.githubusercontent.com/${gh.owner}/${gh.repo}/${ref}/${entry.path}`,
+        authHeaders(source, env),
+        opts,
+      );
+      const target = path.join(cacheDir, rel);
+      await ensureDir(path.dirname(target));
+      await fs.writeFile(target, Buffer.from(await res.arrayBuffer()));
+    },
+    { concurrency: opts.concurrency ?? 8, ...(opts.signal ? { signal: opts.signal } : {}) },
+  );
+
+  const content = await fs.readFile(profilePath, 'utf8');
   return { content, dir: cacheDir };
 }
 
@@ -495,14 +698,19 @@ async function fetchGit(
     });
   }
 
-  const filePath = path.join(repoDir, source.gitSubpath ?? '');
+  // Directory form: the clone already materialized the whole tree, so the
+  // profile is simply `<subpath>/qavor.yaml` and siblings resolve for free.
+  const subpath = source.dirForm
+    ? path.join(source.gitSubpath ?? '', DIR_PROFILE_FILE)
+    : (source.gitSubpath ?? '');
+  const filePath = path.join(repoDir, subpath);
   try {
     const content = await fs.readFile(filePath, 'utf8');
     return { content, dir: path.dirname(filePath) };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       throw new RuntimeFailure(
-        `Profile '${source.gitSubpath}' not found in repo '${redact(source.target)}'` +
+        `Profile '${subpath}' not found in repo '${redact(source.target)}'` +
           (source.gitRef ? ` at ref '${source.gitRef}'.` : '.'),
       );
     }
