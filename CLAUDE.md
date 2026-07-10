@@ -58,9 +58,12 @@ src/
 ├── workspace/      # Workspace init, .qavor/ state directory management
 ├── git/            # Git wrapper: execa for mutations, simple-git for read-only inspection
 ├── env/            # Layered env composer with provenance tracking
-├── command/        # generic dynamic-command runner (runtime.native.<command>)
-├── supervisor/     # native.ts (own supervisor via execa), compose.ts (docker compose driver)
+├── command/        # dynamic-command runner + declarative compose/docker step executors
 └── util/           # Concurrency helpers (p-queue/p-limit/p-map), AbortSignal, fs utils
+
+library/            # first-party backing-service templates (postgresql, mysql,
+                    # redisearch, kind) — profiles + compose files consumed via
+                    # remote directory sources; conventions in library/README.md
 ```
 
 ### Key wiring
@@ -71,6 +74,7 @@ src/
 - **Exit codes**: `0` ok · `1` user error · `2` manifest error · `3` runtime error. Defined in `docs/exit-codes.md`.
 - **State directory**: `.qavor/` at workspace root (gitignored) holds PIDs, logs, generated compose files, and cache. Layout in `AGENTS.md §10`.
 - **Dynamic commands**: a runtime backend's non-reserved keys (anything but `enabled`/`check_installed`/`install`/`run`) are user-defined commands. They are discovered from manifests at startup and registered as `qavor <command>` subcommands (`src/cli/commands/dynamic.ts`), each fanning `runtime.native.<command>` out over the services that declare it via the generic runner in `src/command/`. No command set is hard-coded; `qavor commands` lists what's defined.
+- **Declarative steps (ADR-008/009)**: a step is `cmd:` (shell) OR `compose:`/`docker:` (declarative, `${VAR}`-interpolated fail-closed, executed via the docker CLI). Profile-contributed steps carry an internal `$dir` origin so `cwd`/`file:` resolve against the profile's own (possibly remotely materialized) directory; a `profiles:` source path without a `.yaml` suffix fetches the whole directory. See `AGENTS.md §6` and `library/README.md`.
 
 ### Commit message style
 

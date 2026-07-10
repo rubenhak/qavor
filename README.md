@@ -89,13 +89,14 @@ All multi-repo verbs accept a `--only <name...>` selector. `--json` flips every 
 - Git fan-out: `clone`, `sync`, `status`, `commit`, `push` with `--only`, bounded concurrency, and a live status TUI.
 - Dynamic manifest commands: every `runtime.native.<key>` other than `enabled` / `check_installed` / `install` (e.g. `run`, `prepare`, `update_libraries`, `lint`, `test`) is discovered and fanned out as `qavor <command>`; `qavor commands` lists them. qavor hard-codes no command names.
 - Env composition with provenance and precedence (`qavor env`, `qavor resolve-env`), including `require:`-dependency env and backing-service `env.publish` contract propagation, with `export` / `dotenv` sourceable output.
-- Profiles: local + **remote** sources (https / GitHub / git / `file://`), profile chaining, and `$append` / `$prepend` / `$replace` / `$unset` step-list merge directives (`qavor resolve-manifest`).
+- Profiles: local + **remote** sources (https / GitHub / git / `file://`, including whole-directory references), profile chaining, and `$append` / `$prepend` / `$replace` / `$unset` step-list merge directives (`qavor resolve-manifest`).
+- Declarative `compose:` / `docker:` runtime steps (`${VAR}`-parametrized, healthcheck-gated `up`), and a first-party **service library** of backing-service templates — postgresql, mysql, redisearch, kind — under [`library/`](library/README.md).
 - `qavor doctor` toolchain + workspace preflight.
 - `--json` on every command, documented exit codes, published to npm with provenance.
 
 **Not yet implemented**
 
-- Container execution (`--mode docker`) and backing-service bring-up (`mode: docker-compose`, generated compose project, `qavor backing …`) — the `env.publish` *contract* composes, but qavor does not yet run the compose project.
+- Container execution for first-party apps (`--mode docker`: image build/run conventions). Backing services bring themselves up via declarative `compose:`/`docker:` steps instead.
 - `${secret:...}` interpolation and secret providers (reserved; fails closed today).
 - Built-in process supervision. qavor ships no `up` / `down` / `ps` / `logs` verbs and does not daemonize or track PIDs; a long-running service is just a manifest command (`qavor run`) that runs in the foreground. Backgrounding/supervision is left to the command itself (nohup, a process manager, `docker compose up -d`, …).
 - Runtime dependency-graph orchestration: topological multi-service start, readiness probes / `waitFor`.

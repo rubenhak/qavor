@@ -16,13 +16,13 @@ All manifests share three conventions:
 > **Runtime-support status.** Every manifest shape below validates against the
 > schemas, but not all of it executes yet. **Runs today:** the `native` runtime
 > via dynamic commands (`qavor <command>` — e.g. `qavor run`, `qavor prepare`),
-> profiles (local + remote,
-> chaining, merge directives), `require:`-dependency env composition, and the
-> `env.publish` contract (composed into dependents by `qavor resolve-env`).
-> **Not yet executed:** `mode: docker` / `mode: docker-compose` bring-up
-> (backing services validate and their published contract composes, but qavor
-> does not yet start their compose project), and `${secret:...}` interpolation,
-> which is **reserved and fails closed**. Use plain env for now. See the
+> declarative `compose:` / `docker:` steps (backing-service bring-up — see
+> "Declarative steps" below and `library/`), profiles (local + remote, including
+> whole-directory sources, chaining, merge directives), `require:`-dependency
+> env composition, and the `env.publish` contract (composed into dependents by
+> `qavor resolve-env`). **Not yet executed:** `mode: docker` image build/run
+> conventions for first-party apps, and `${secret:...}` interpolation, which is
+> **reserved and fails closed**. Use plain env for now. See the
 > [README implementation status](../README.md#implementation-status).
 
 A typical workspace on disk looks like this:
@@ -257,68 +257,120 @@ env:
 
 
 <a id="backing-service-example"></a>
+### Declarative steps (`compose:` / `docker:`)
+
+A command's `operations` accepts three step kinds (ADR-008). The classic shell
+step is a bare `{ cmd, cwd?, env?, shell? }` object; the two declarative kinds
+carry their body under a single key and shell out to the docker CLI:
+
+```yaml
+runtime:
+  native:
+    enabled: true
+    up:
+      description: "Start the database and wait until healthy."
+      operations:
+        # shell step — the shell expands $VARS itself
+        - cmd: docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1 || docker network create "$DOCKER_NETWORK"
+        # compose step — qavor interpolates ${VAR} from the composed env
+        # (fail-closed) and runs `docker compose -p … -f … up -d --wait`
+        - compose:
+            action: up                    # up|down|stop|start|restart|ps|logs|pull|build
+            file: ./docker-compose.yaml   # default; relative to the DEFINING manifest
+            project: ${PG_PROJECT}
+            wait: true
+            timeout: ${PG_READY_TIMEOUT}
+        # docker step — single container; `up` is idempotent ensure-running
+        - docker:
+            action: up                    # up|down|run|start|stop|restart|rm|logs|status
+            name: ${SIDE_CONTAINER}
+            image: adminer:5.3.0
+            ports: ["8080:8080"]
+            network: ${DOCKER_NETWORK}
+            wait: true
+```
+
+Field notes:
+
+- **Interpolation.** Every string field of a declarative step supports `${VAR}`
+  against the composed service env (unresolved names fail closed; `${secret:…}`
+  is reserved). `cmd` steps are untouched — their shell expands variables.
+- **Paths.** `file:`, `env_file:`, and `cwd` resolve against the **defining
+  manifest's directory**: for steps contributed by a profile that is the
+  profile's own directory (a remote profile's materialized cache dir), so a
+  template's `./docker-compose.yaml` always means the file next to the profile.
+  Every step also sees `QAVOR_MANIFEST_DIR` (that directory) in its env.
+- **Compose env.** The composed service env is passed to `docker compose`, so
+  the compose file itself parametrizes with native `${VAR}` interpolation.
+- **Lifecycle semantics.** `compose.action: up` always runs detached and, with
+  `wait: true`, blocks on healthchecks (`--wait --wait-timeout N`);
+  `compose.action: down` keeps named volumes unless `volumes: true`.
+  `docker.action: up` triages: run if absent, start if stopped, no-op if
+  running; `docker.action: down` stops and removes the container, wiping only
+  the volumes listed in `remove_volumes`.
+- **Escape hatch.** Both kinds accept `args: [ … ]`, spliced in after the
+  modeled flags, for anything not modeled.
+
+The full field tables live in `docs/schemas/qavor.defs.schema.json`
+(`composeStep` / `dockerStep`). Ready-made backing-service templates built on
+these steps ship under [`library/`](../library/README.md).
+
+<a id="backing-service-example-legacy"></a>
 ### Backing service (postgres, kafka, redis, …)
 
 An externally provided backing dependency is just a `kind: service` with two
-extra traits: it usually runs via `docker-compose` (qavor generates and owns the
-compose project, per ADR-005), and it declares an `env.publish` block — the
-explicit contract exposed to dependents. When a service declares `env.publish`,
-its dependents receive **only** the published keys (interpolated at start time),
-never its full env.
+extra traits: it brings itself up with declarative `compose:` steps (see above
+— a compose file next to the manifest, per ADR-008), and it declares an
+`env.publish` block — the explicit contract exposed to dependents. When a
+service declares `env.publish`, its dependents receive **only** the published
+keys (interpolated at start time), never its full env. The `library/`
+templates (postgresql, mysql, redisearch, kind) are the canonical examples of
+this pattern.
 
 ```yaml
 # a backing service is just a service that publishes a contract
 kind: service
-
-# unique service name within the workspace
 name: postgres
-
-# optional additional group membership
 groups: [database]
 
-# which runtimes are available; backing services typically use docker-compose
-mode: docker-compose
+env:
+  # parameters for the service itself (long-form entries document defaults)
+  common:
+    PG_PROJECT: { default: qavor-pg-main }
+    POSTGRES_IMAGE: { default: "postgres:17.5-alpine" }
+    POSTGRES_PORT: { default: 5432 }
+    POSTGRES_USER: { default: app }
+    POSTGRES_PASSWORD: { default: app, secret: true }
+    POSTGRES_DB: { default: app }
+
+  # variables published to dependents (resolved into their env)
+  publish:
+    POSTGRES_HOST: 127.0.0.1
+    POSTGRES_PORT: "${POSTGRES_PORT}"
+    POSTGRES_URL:
+      value: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}"
+      secret: true
+
 runtime:
   native:
-    enabled: false
-  docker:
-    enabled: false
-  docker-compose:
     enabled: true
-
-# Hooks allow custom operation to be performed 
-hooks:
-  pre_run:
-    - ./pre-run.sh
-  post_run:
-    - ./post-run.sh
-  
-# defines environment variables for the dep itself
-env:
-  # common env variables apply to all environments
-  common:
-    POSTGRES_DB:       auth
-    POSTGRES_USER:     auth
-    POSTGRES_PASSWORD: "${secret:PG_PW}"
-
-  # native applies along with common env vars when running natively
-  native:
-    POSTGRES_HOST: localhost
-    POSTGRES_PORT: 1234
-
-  # container applies along with common env vars when running in a container
-  docker:
-    POSTGRES_HOST: mypostgresql
-    POSTGRES_PORT: 5432
-
-
-  # variables published to dependents (resolved into their env at start time)
-  publish:
-    POSTGRES_HOST: "${POSTGRES_HOST}"
-    POSTGRES_PORT: "${POSTGRES_PORT}"
-    POSTGRES_URL:  "postgres://auth:${secret:PG_PW}@${HOST}:${PORT}/auth"
-    
+    up:
+      description: "Start PostgreSQL and wait until healthy."
+      operations:
+        - compose: { action: up, project: "${PG_PROJECT}", wait: true }
+    down:
+      operations:
+        - compose: { action: down, project: "${PG_PROJECT}" }
+    purge:
+      description: "Down + delete the data volume."
+      operations:
+        - compose: { action: down, project: "${PG_PROJECT}", volumes: true }
 ```
+
+The referenced `docker-compose.yaml` sits next to the manifest and uses compose's
+own `${VAR}` interpolation against the composed env. Rather than hand-writing
+this, most workspaces reference a library template remotely — see
+[`library/README.md`](../library/README.md).
 
 
 
@@ -553,6 +605,26 @@ profiles:
 - **Caching & offline.** Fetched content is cached under `~/.cache/qavor/`
   (`profiles/` for https/GitHub, `profiles-git/` for clones). `--offline`
   resolves from cache only; `--refresh` re-fetches.
+
+**Directory sources (ADR-009).** A source path that does **not** end in
+`.yaml`/`.yml` is a *directory reference*: the profile is read from
+`<dir>/qavor.yaml` and the **entire directory** (compose files, configs, …) is
+materialized locally, so the profile's declarative steps can reference sibling
+files (`file: ./docker-compose.yaml` resolves into that directory).
+
+```yaml
+profiles:
+  - github:rubenhak/qavor//library/postgresql@v0.4.0     # GitHub dir (tree API)
+  - git@github.com:acme/templates.git//stacks/mysql@main # git dir (whole clone)
+  - file:///abs/path/library/redisearch                  # local dir, in place
+```
+
+GitHub directory fetches are capped (100 files / 10 MB) and require the
+directory to contain a `qavor.yaml`. Plain https URLs cannot be enumerated, so
+their directory form fails closed — use a github:/git/file source instead.
+`@ref` is the pin for a directory source; `#sha256=` pins the `qavor.yaml`
+content only. qavor ships a public library of backing-service templates
+consumed exactly this way — see [`library/README.md`](../library/README.md).
 
 ```yaml
 # indicates that the manifest describes an executable application

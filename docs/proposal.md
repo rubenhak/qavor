@@ -151,18 +151,20 @@ Each item is tagged ✅ done · 🟡 partial · ⬜ planned (see [§0](#0-implem
 ### 5.3 Backing Services (stateful dependencies)
 
 A backing service is a `kind: service` for an externally provided dependency. It is
-distinguished only by how it runs (typically `mode: docker-compose`) and by declaring an
-`env.publish` contract.
+distinguished only by declaring an `env.publish` contract and bringing itself up with
+declarative `compose:`/`docker:` steps (ADR-008). Ready-made templates ship under
+`library/` (postgresql, mysql, redisearch, kind) and are consumed via remote profile
+directory sources (ADR-009) — see `library/README.md`.
 
-- ⬜ Bringup of postgres / mysql / kafka / etc. (the manifest shape exists; runtime execution is not built).
-- ⬜ **Backed by docker compose** under the hood — `qavor` generates and owns the compose project (per ADR-005) from backing-service documents (`mode: docker-compose`).
-- ⬜ **Versioned and pinned** — image versions live in the manifest's `runtime.docker-compose.run.cmd` or in env (e.g. `POSTGRES_IMAGE: postgres:16.3`).
-- ⬜ **Health checks / readiness gating** — dependents only start once probes pass (configured on the runtime backend).
-- 🟡 **Connection info exposure** — the `env.publish:` map is defined and *composes into dependents' env* today (`qavor resolve-env`); it is not yet populated by a running backing service.
-- 🟡 **Volumes, seed data, migrations** — `pre_run` / `post_run` hooks are defined in the schema but do not currently fire (the native supervisor that invoked them was removed); express setup as ordinary manifest commands or `pre_command` / `post_command` hooks. Compose-backed one-shots are planned.
+- ✅ Bringup of postgres / mysql / redisearch / a kind cluster via `library/` templates; other services are expressible with the same declarative steps.
+- ✅ **Backed by docker compose** under the hood — a compose file authored next to the manifest, driven by declarative `compose:` steps (`up -d --wait`, `down`, `down -v`). *ADR-005's generate-and-own compose project is superseded at step granularity by ADR-008.*
+- ✅ **Versioned and pinned** — image versions live in env (e.g. `POSTGRES_IMAGE: postgres:17.5-alpine`), overridable per workspace.
+- 🟡 **Health checks / readiness gating** — `up` blocks on container healthchecks (`compose up --wait` / docker health polling); *dependents-wait-for-ready graph gating is still planned* (`waitFor: ready`).
+- 🟡 **Connection info exposure** — the `env.publish:` map composes into dependents' env (`qavor resolve-env`); it is not yet injected into dependents' `qavor <command>` runs automatically.
+- 🟡 **Volumes, seed data, migrations** — named volumes are owned by the compose project (`down` keeps them, `purge` wipes them); seed/migrate via ordinary manifest commands or `$append` steps on `up`. `pre_run` / `post_run` hooks still do not fire.
 - ⬜ **Reset / recreate / snapshot / restore** — `qavor backing reset postgres`, optional snapshot for fast rewinds.
-- ⬜ **Auto port allocation** — avoid conflicts when multiple workspaces coexist.
-- ⬜ **Multiple instances** — e.g., a `postgres-app` backing service and a separate `postgres-test` one.
+- ⬜ **Auto port allocation** — avoid conflicts when multiple workspaces coexist (ports are env-parametrized; allocation is manual).
+- ✅ **Multiple instances** — two stubs referencing the same library template with different `*_INSTANCE`/port values yield independent instances.
 
 ### 5.4 Service Execution
 
