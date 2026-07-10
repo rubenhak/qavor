@@ -151,10 +151,11 @@ function collectOverlay(
     if (typeof value !== 'undefined') own[key] = value;
   }
   // Steps a profile contributes are stamped with the profile's own directory so
-  // executors resolve step-relative paths (cwd, a compose step's `file`) against
-  // the profile — for a remote profile, its locally materialized directory —
-  // rather than the referencing service's dir. Services' own steps stay
-  // unannotated; the executor falls back to the service manifest's dir.
+  // executors resolve profile-shipped asset paths (a compose step's
+  // `file`/`env_file`) against the profile — for a remote profile, its locally
+  // materialized directory. The step's working directory is unaffected: cwd
+  // always follows the consuming service, as if the profile's steps had been
+  // copied inline. Services' own steps stay unannotated.
   if (entry.kind === 'profile' && typeof own.runtime !== 'undefined') {
     own.runtime = annotateRuntimeOrigin(structuredClone(own.runtime), entry.dir);
   }

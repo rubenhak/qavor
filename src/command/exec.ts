@@ -4,14 +4,24 @@ import type { Logger } from '../util/logger.js';
 
 /**
  * Shared execution context for one declarative step (compose/docker). Built by
- * the command runner; carries the resolved defining-manifest directory and the
- * full spawn env (process.env + composed service env + injected `QAVOR_*`).
+ * the command runner; carries the two directories a step resolves paths against
+ * and the full spawn env (process.env + composed service env + injected
+ * `QAVOR_*`).
+ *
+ * The two dirs are distinct for a profile-contributed step: the working
+ * directory is the consuming service's own dir (so a step runs and writes output
+ * where the service lives, exactly as if the profile had been copied inline),
+ * while profile-shipped asset paths (a compose `file`/`env_file`) resolve against
+ * the profile's own — for a remote profile, locally materialized — directory.
+ * For a service's own step the two coincide.
  */
 export interface DeclarativeStepContext {
   serviceName: string;
   command: string;
-  /** Directory of the manifest that defined the step; default cwd and base for relative paths. */
-  stepDir: string;
+  /** The consuming service manifest's directory; the step's default cwd. */
+  serviceDir: string;
+  /** Directory of the manifest that defined the step; base for `file`/`env_file`. */
+  originDir: string;
   /** Full spawn environment; also the `${VAR}` interpolation scope. */
   env: Record<string, string | undefined>;
   /** Pass raw output through to the terminal (verbose + serial fan-out). */
@@ -53,7 +63,7 @@ export async function captureDocker(
 
 function execOpts(ctx: DeclarativeStepContext, cwd?: string): ExecaOptions {
   return {
-    cwd: cwd ?? ctx.stepDir,
+    cwd: cwd ?? ctx.serviceDir,
     env: ctx.env,
     stdio: ctx.stream ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'ignore', 'ignore'],
     ...(ctx.signal ? { cancelSignal: ctx.signal } : {}),
