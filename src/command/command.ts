@@ -94,13 +94,16 @@ export async function runServiceCommand(input: RunCommandInput): Promise<RunComm
   // Steps run in declaration order; the first non-zero exit aborts the rest.
   // A step is either a shell `cmd` step (run via the shell, which expands its
   // own variables) or a declarative `compose`/`docker` step (qavor interpolates
-  // ${VAR} itself and shells out to docker). Relative paths (cwd, compose file)
-  // resolve against the step's defining manifest — the profile's directory for
-  // profile-contributed steps — with the service manifest's dir as fallback.
+  // ${VAR} itself and shells out to docker). A step's working directory is
+  // always the consuming service manifest's dir — referencing a profile behaves
+  // as if its steps were copied inline. Profile-shipped assets (a compose
+  // `file`/`env_file`, or anything reached via `$QAVOR_MANIFEST_DIR`) still
+  // resolve against the defining manifest's dir — the profile's own
+  // (materialized) directory for profile-contributed steps.
   for (const [index, step] of steps.entries()) {
     const stepLabel = steps.length > 1 ? ` (step ${index + 1}/${steps.length})` : '';
-    const stepDir = stepOriginDir(step) ?? manifestDir;
-    const stepEnv = { ...env, QAVOR_MANIFEST_DIR: stepDir };
+    const originDir = stepOriginDir(step) ?? manifestDir;
+    const stepEnv = { ...env, QAVOR_MANIFEST_DIR: originDir };
     input.logger.info(
       {
         service: input.service.name,
@@ -114,7 +117,7 @@ export async function runServiceCommand(input: RunCommandInput): Promise<RunComm
 
     try {
       if (isCmdStep(step)) {
-        const cwd = step.cwd ? path.resolve(stepDir, step.cwd) : stepDir;
+        const cwd = step.cwd ? path.resolve(manifestDir, step.cwd) : manifestDir;
         const shell = step.shell ?? '/bin/sh';
         const opts: ExecaOptions = {
           cwd,
@@ -134,7 +137,8 @@ export async function runServiceCommand(input: RunCommandInput): Promise<RunComm
         const ctx: DeclarativeStepContext = {
           serviceName: input.service.name,
           command: input.command,
-          stepDir,
+          serviceDir: manifestDir,
+          originDir,
           env: { ...process.env, ...stepEnv },
           stream,
           logger: input.logger,

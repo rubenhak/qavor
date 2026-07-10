@@ -9,11 +9,13 @@ import type {
 /**
  * Internal, post-validation annotation key: the directory of the manifest that
  * defined a step. Profile flattening stamps it on every step a profile
- * contributes (see `resolve.ts`), so executors can resolve step-relative paths
- * (`cwd`, a compose step's `file`) against the profile's own directory — which
- * for a remote profile is its locally materialized cache directory — rather
- * than the referencing service's. Never part of the schema; stripped from any
- * user-facing manifest dump via {@link stripStepOrigins}.
+ * contributes (see `resolve.ts`), so executors can resolve *profile-shipped
+ * asset* paths (a compose step's `file`/`env_file`, or anything a step reaches
+ * via `$QAVOR_MANIFEST_DIR`) against the profile's own directory — which for a
+ * remote profile is its locally materialized cache directory. A step's working
+ * directory does **not** use this: cwd always follows the consuming service, as
+ * if the profile's steps had been copied inline. Never part of the schema;
+ * stripped from any user-facing manifest dump via {@link stripStepOrigins}.
  */
 export const STEP_ORIGIN_KEY = '$dir';
 

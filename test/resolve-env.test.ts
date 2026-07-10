@@ -140,6 +140,55 @@ test('resolve-env: only env.publish flows from a backing-service dep', async () 
   }
 });
 
+test('resolve-env: env.publish can interpolate QAVOR_SERVICE_DIR/WORKSPACE_DIR', async () => {
+  const ws = await makeTempDir('qavor-resolve-');
+  try {
+    const backing = await makeEntry(
+      ws,
+      'kind',
+      [
+        'kind: service',
+        'name: kind',
+        'mode: native',
+        'env:',
+        '  common: { KIND_KUBECONFIG_FILE: runtime/kube-config.yaml }',
+        '  publish:',
+        '    KUBECONFIG: "${QAVOR_SERVICE_DIR}/${KIND_KUBECONFIG_FILE}"',
+        '    WS: "${QAVOR_WORKSPACE_DIR}"',
+        '',
+      ].join('\n'),
+    );
+    const target = await makeEntry(
+      ws,
+      'app',
+      [
+        'kind: service',
+        'name: app',
+        'require:',
+        '  - service: kind',
+        'env:',
+        '  common: { PORT: 8080 }',
+        '',
+      ].join('\n'),
+    );
+    const resolved = await composeUnitEnv({
+      mode: 'native',
+      target,
+      registry: registryOf([backing, target]),
+      workspaceRoot: ws,
+    });
+    assert.equal(resolved.issues.length, 0);
+    // Backing service hands the dependent absolute, workspace-owned paths.
+    assert.equal(
+      resolved.values.get('KUBECONFIG')?.value,
+      path.join(ws, 'kind', 'runtime/kube-config.yaml'),
+    );
+    assert.equal(resolved.values.get('WS')?.value, ws);
+  } finally {
+    await cleanup(ws);
+  }
+});
+
 test('resolve-env: .env.container overrides docker env in qavor.yaml', async () => {
   const ws = await makeTempDir('qavor-resolve-');
   try {

@@ -90,7 +90,7 @@ test('schema: compose and docker steps validate; malformed steps are rejected', 
 // Argv builders
 // ---------------------------------------------------------------------------
 
-test('composeArgv: up maps every modeled flag and resolves files against stepDir', () => {
+test('composeArgv: up maps every modeled flag and resolves files against assetDir', () => {
   const step: ComposeStep = {
     action: 'up',
     file: ['./docker-compose.yaml', './override.yaml'],
@@ -105,7 +105,7 @@ test('composeArgv: up maps every modeled flag and resolves files against stepDir
     args: ['--quiet-pull'],
     services: ['db'],
   };
-  const argv = composeArgv(step, { stepDir: '/lib/pg', serviceName: 'pg' });
+  const argv = composeArgv(step, { assetDir: '/lib/pg', serviceName: 'pg' });
   assert.deepEqual(argv, [
     'compose',
     '-p',
@@ -132,7 +132,7 @@ test('composeArgv: up maps every modeled flag and resolves files against stepDir
 });
 
 test('composeArgv: defaults — file, project from service name; down/logs flags', () => {
-  const down = composeArgv({ action: 'down', volumes: true }, { stepDir: '/d', serviceName: 's' });
+  const down = composeArgv({ action: 'down', volumes: true }, { assetDir: '/d', serviceName: 's' });
   assert.deepEqual(down, [
     'compose',
     '-p',
@@ -144,7 +144,7 @@ test('composeArgv: defaults — file, project from service name; down/logs flags
   ]);
   const logs = composeArgv(
     { action: 'logs', tail: 100, follow: true },
-    { stepDir: '/d', serviceName: 's' },
+    { assetDir: '/d', serviceName: 's' },
   );
   assert.ok(logs.join(' ').endsWith('logs --tail 100 --follow'), logs.join(' '));
 });
@@ -377,6 +377,71 @@ test('execution: compose and docker steps interpolate env and shell out to docke
     await run('stop_db');
     lines = (await fs.readFile(log, 'utf8')).trim().split('\n');
     assert.deepEqual(lines, ['stop -t 5 qavor-pg-alpha-db']);
+  } finally {
+    await cleanup(repo);
+    await cleanup(lib);
+    await cleanup(cache);
+  }
+});
+
+test('cwd: a profile-contributed cmd step runs in the consuming service dir, not the profile dir', async () => {
+  const repo = await makeTempDir('qavor-ds-');
+  const lib = await makeTempDir('qavor-dslib-');
+  const cache = await makeTempDir('qavor-dsc-');
+  try {
+    // A profile whose step records its own working directory and the value of
+    // $QAVOR_MANIFEST_DIR. Both output files are written relative to cwd.
+    await writeTree(lib, {
+      'probe/qavor.yaml': [
+        'kind: profile',
+        'name: lib-probe',
+        'mode: native',
+        'runtime:',
+        '  native:',
+        '    enabled: true',
+        '    probe:',
+        '      operations:',
+        '        - cmd: pwd > cwd.txt && printf %s "$QAVOR_MANIFEST_DIR" > origin.txt',
+        '',
+      ].join('\n'),
+    });
+    await writeTree(repo, {
+      'svc/qavor.yaml': [
+        'kind: service',
+        'name: svc',
+        `profiles: ["file://${path.join(lib, 'probe')}"]`, // directory form
+        '',
+      ].join('\n'),
+    });
+    const reg = await buildRegistry(repo, cache);
+    assert.equal(reg.issues.length, 0, JSON.stringify(reg.issues));
+    const entry = reg.entries.find((e) => e.kind === 'service' && e.name === 'svc');
+    assert.ok(entry);
+    const docs = await loadManifestFile(entry.file);
+    const serviceDoc = docs[entry.docIndex] as LoadedDocument;
+    serviceDoc.data = entry.data; // run the flattened definition, as the CLI does
+
+    await runServiceCommand({
+      command: 'probe',
+      paths: { root: repo } as WorkspacePaths,
+      projectDir: repo,
+      serviceDoc,
+      service: entry.data as unknown as ServiceManifest,
+      logger: getLogger(),
+    });
+
+    const serviceDir = path.join(repo, 'svc');
+    const originDir = path.join(lib, 'probe');
+    // The step ran with cwd = the consuming service's dir (copy-inline semantics):
+    // its relative output landed there, and `pwd` recorded that dir.
+    const recordedCwd = (await fs.readFile(path.join(serviceDir, 'cwd.txt'), 'utf8')).trim();
+    assert.equal(await fs.realpath(recordedCwd), await fs.realpath(serviceDir));
+    // It did NOT run in the profile's own (origin) dir.
+    await assert.rejects(fs.access(path.join(originDir, 'cwd.txt')));
+    // But $QAVOR_MANIFEST_DIR still points at the defining profile's dir so a
+    // profile can reach files it ships.
+    const recordedOrigin = await fs.readFile(path.join(serviceDir, 'origin.txt'), 'utf8');
+    assert.equal(await fs.realpath(recordedOrigin), await fs.realpath(originDir));
   } finally {
     await cleanup(repo);
     await cleanup(lib);

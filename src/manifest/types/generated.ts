@@ -268,7 +268,7 @@ export interface CmdStep {
    */
   cmd: string;
   /**
-   * Working directory relative to the defining manifest (the profile's own directory when the step comes from a profile).
+   * Working directory relative to the consuming service's directory. Even for a step contributed by a profile, cwd follows the referencing service — as if the profile's steps had been copied inline — not the profile's own directory.
    */
   cwd?: string;
   env?: EnvMap;
@@ -300,7 +300,7 @@ export interface EnvSpec {
   description?: string;
 }
 /**
- * Declarative `docker compose` step. qavor interpolates `${VAR}` in every string field from the composed service env (fail-closed on unresolved names), resolves `file`/`env_file`/`cwd` against the defining manifest's directory (the profile's own directory when the step comes from a profile — remote profile directories are materialized locally), and shells out to `docker compose`. The composed env is passed to the process, so the compose file itself may use `${VAR}` interpolation natively.
+ * Declarative `docker compose` step. qavor interpolates `${VAR}` in every string field from the composed service env (fail-closed on unresolved names), resolves `file`/`env_file` against the defining manifest's directory (the profile's own directory when the step comes from a profile — remote profile directories are materialized locally), runs with `cwd` defaulting to the consuming service's directory, and shells out to `docker compose`. The composed env is passed to the process, so the compose file itself may use `${VAR}` interpolation natively.
  */
 export interface ComposeStep {
   /**
@@ -364,7 +364,7 @@ export interface ComposeStep {
    */
   args?: string[];
   /**
-   * Working directory relative to the defining manifest. Defaults to the defining manifest's directory.
+   * Working directory relative to the consuming service's directory. Defaults to the consuming service's directory, even for a profile-contributed step; the compose `file`/`env_file` still resolve against the defining manifest's directory.
    */
   cwd?: string;
 }

@@ -295,11 +295,17 @@ Field notes:
 - **Interpolation.** Every string field of a declarative step supports `${VAR}`
   against the composed service env (unresolved names fail closed; `${secret:…}`
   is reserved). `cmd` steps are untouched — their shell expands variables.
-- **Paths.** `file:`, `env_file:`, and `cwd` resolve against the **defining
+- **Asset paths.** `file:` and `env_file:` resolve against the **defining
   manifest's directory**: for steps contributed by a profile that is the
   profile's own directory (a remote profile's materialized cache dir), so a
   template's `./docker-compose.yaml` always means the file next to the profile.
-  Every step also sees `QAVOR_MANIFEST_DIR` (that directory) in its env.
+  Every step also sees `QAVOR_MANIFEST_DIR` (that directory) in its env, so a
+  profile can reach any other file it ships.
+- **Working directory.** `cwd` (and every step's default cwd) resolves against
+  the **consuming service's directory** — even when the step comes from a
+  profile. Referencing a profile behaves as if its steps had been copied inline,
+  so a step runs and writes output where the service lives, not in the profile's
+  (possibly cache) directory.
 - **Compose env.** The composed service env is passed to `docker compose`, so
   the compose file itself parametrizes with native `${VAR}` interpolation.
 - **Lifecycle semantics.** `compose.action: up` always runs detached and, with

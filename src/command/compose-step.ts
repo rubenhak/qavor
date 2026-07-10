@@ -9,14 +9,18 @@ const DEFAULT_COMPOSE_FILE = './docker-compose.yaml';
 /**
  * Build the full `docker compose …` argv for a declarative compose step. Pure —
  * `step` must already be interpolated; paths in the result are absolute.
- * Exported for unit tests.
+ * `assetDir` is the directory that ships the compose/env files (the profile's
+ * own dir for a profile-contributed step), which is not necessarily the step's
+ * working directory. Exported for unit tests.
  */
 export function composeArgv(
   step: ComposeStep,
-  opts: { stepDir: string; serviceName: string },
+  opts: { assetDir: string; serviceName: string },
 ): string[] {
-  const files = toList(step.file ?? DEFAULT_COMPOSE_FILE).map((f) => path.resolve(opts.stepDir, f));
-  const envFiles = toList(step.env_file).map((f) => path.resolve(opts.stepDir, f));
+  const files = toList(step.file ?? DEFAULT_COMPOSE_FILE).map((f) =>
+    path.resolve(opts.assetDir, f),
+  );
+  const envFiles = toList(step.env_file).map((f) => path.resolve(opts.assetDir, f));
   const project = step.project ?? `qavor-${opts.serviceName}`;
 
   const argv = [
@@ -76,8 +80,10 @@ function actionArgs(step: ComposeStep): string[] {
 export async function runComposeStep(raw: ComposeStep, ctx: DeclarativeStepContext): Promise<void> {
   const context = `${ctx.command} (compose ${raw.action}) of ${ctx.serviceName}`;
   const step = interpolateDeep(raw, ctx.env, context);
-  const cwd = step.cwd ? path.resolve(ctx.stepDir, step.cwd) : ctx.stepDir;
-  const argv = composeArgv(step, { stepDir: ctx.stepDir, serviceName: ctx.serviceName });
+  // cwd follows the consuming service (copy-inline semantics); the compose/env
+  // files ship with the profile and resolve against its own dir.
+  const cwd = step.cwd ? path.resolve(ctx.serviceDir, step.cwd) : ctx.serviceDir;
+  const argv = composeArgv(step, { assetDir: ctx.originDir, serviceName: ctx.serviceName });
   const label = `${ctx.command}: compose ${step.action}`;
 
   if (step.action === 'ps') {

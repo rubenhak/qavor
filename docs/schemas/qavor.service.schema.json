@@ -44,7 +44,7 @@
     },
     "env": {
       "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/envBlock",
-      "description": "Layered env block. A backing service may set `env.publish` — the explicit contract exposed to dependents at start time; values are interpolated against the resolved env of this service."
+      "description": "Layered env block. A backing service may set `env.publish` — the explicit contract exposed to dependents at start time; values are interpolated against the resolved env of this service, and may also reference `${QAVOR_SERVICE_DIR}` and `${QAVOR_WORKSPACE_DIR}` (the publishing service's absolute service/workspace paths) so a dependency can hand dependents an absolute path it owns, e.g. a kubeconfig it writes under its own dir."
     },
     "hooks": { "$ref": "https://qavor.dev/schemas/qavor.defs.schema.json#/$defs/hooks" }
   }
