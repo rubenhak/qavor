@@ -66,11 +66,18 @@ These were listed as out-of-scope for MVP but have since landed:
 
 Ordered roughly by expected sequence, not committed dates:
 
-1. **Container execution.** `--mode docker` for services; the generated,
-   qavor-owned compose project (ADR-005); image-name templating and build/run.
-2. **Backing-service orchestration.** `mode: docker-compose` bring-up, health/
-   readiness gating, `qavor backing up|down|reset|snapshot|restore`. The
-   `env.publish` contract already composes; runtime execution is the gap.
+> Shipped since this list was drawn up: **declarative `compose:`/`docker:`
+> runtime steps** (ADR-008), **remote profile directory sources** (ADR-009),
+> and the **`library/` template collection** — these cover backing-service
+> bring-up with healthcheck-gated `up` (item 2's core), leaving reset/snapshot
+> and graph-level readiness gating below.
+
+1. **Container execution.** `--mode docker` for services; image-name
+   templating and build/run. (ADR-005's generated compose project was narrowed
+   by ADR-008 — compose files are authored next to manifests.)
+2. **Backing-service orchestration extras.** `qavor backing reset|snapshot|restore`;
+   dependents gated on readiness (`waitFor: ready`). Bring-up itself ships via
+   declarative steps + `library/`.
 3. **Runtime dependency graph.** Topological multi-service start over `require:`,
    readiness probes (HTTP/TCP/command), `waitFor: ready`, `--with-deps` / `--no-deps`.
 4. **Secrets.** `${secret:...}` interpolation (reserved; fails closed today) and

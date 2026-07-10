@@ -1,6 +1,6 @@
 import { ManifestError, UserError } from '../util/exit-codes.js';
 import type { RegistryEntry, WorkspaceRegistry } from './discovery.js';
-import { normalizeSteps } from './steps.js';
+import { normalizeSteps, STEP_ORIGIN_KEY } from './steps.js';
 import type { ManifestKind, RuntimeStepOrList } from './types/index.js';
 
 /** Fields a profile contributes to (and that the referencing manifest overrides). */
@@ -150,7 +150,75 @@ function collectOverlay(
     const value = (entry.data as Record<string, unknown>)[key];
     if (typeof value !== 'undefined') own[key] = value;
   }
+  // Steps a profile contributes are stamped with the profile's own directory so
+  // executors resolve step-relative paths (cwd, a compose step's `file`) against
+  // the profile — for a remote profile, its locally materialized directory —
+  // rather than the referencing service's dir. Services' own steps stay
+  // unannotated; the executor falls back to the service manifest's dir.
+  if (entry.kind === 'profile' && typeof own.runtime !== 'undefined') {
+    own.runtime = annotateRuntimeOrigin(structuredClone(own.runtime), entry.dir);
+  }
   return mergeOverlay(acc, own);
+}
+
+/**
+ * Stamp {@link STEP_ORIGIN_KEY} onto every step object found inside a profile's
+ * `runtime` block (all backends, all commands, including steps nested in
+ * `$append`/`$prepend`/`$replace` directives). Mutates and returns `runtime`,
+ * which must already be a private copy.
+ */
+function annotateRuntimeOrigin(runtime: unknown, dir: string): unknown {
+  if (!isPlainObject(runtime)) return runtime;
+  for (const backend of Object.values(runtime)) {
+    if (!isPlainObject(backend)) continue;
+    for (const [key, command] of Object.entries(backend)) {
+      if (key === 'enabled') continue;
+      annotateCommandValue(command, dir);
+    }
+  }
+  return runtime;
+}
+
+/** Recurse a command value (described command, step, list, or directive). */
+function annotateCommandValue(value: unknown, dir: string): void {
+  if (Array.isArray(value)) {
+    for (const item of value) annotateCommandValue(item, dir);
+    return;
+  }
+  if (!isPlainObject(value)) return;
+  if (isStepObject(value)) {
+    value[STEP_ORIGIN_KEY] = dir;
+    return;
+  }
+  // Merge directives carry their steps in the $append/$prepend/$replace payload.
+  if (DIRECTIVE_KEYS.some((k) => k in value) || value.$unset === true) {
+    for (const key of DIRECTIVE_KEYS) {
+      if (key in value) annotateCommandValue(value[key], dir);
+    }
+    return;
+  }
+  if ('operations' in value) annotateCommandValue(value.operations, dir);
+}
+
+/** A step object of any kind: shell `cmd`, declarative `compose`, or `docker`. */
+function isStepObject(v: Record<string, unknown>): boolean {
+  return typeof v.cmd === 'string' || isPlainObject(v.compose) || isPlainObject(v.docker);
+}
+
+/**
+ * Deep-copy a resolved manifest body with every internal step-origin annotation
+ * removed — for user-facing dumps (`qavor resolve-manifest`) where the
+ * annotation would read as a manifest field.
+ */
+export function stripStepOrigins<T>(data: T): T {
+  if (Array.isArray(data)) return data.map((v) => stripStepOrigins(v)) as unknown as T;
+  if (!isPlainObject(data)) return data;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (key === STEP_ORIGIN_KEY) continue;
+    out[key] = stripStepOrigins(value);
+  }
+  return out as T;
 }
 
 /** Merge two overlays; `top` wins. Objects deep-merge, scalars/arrays replace. */

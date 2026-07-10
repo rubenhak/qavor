@@ -1,0 +1,118 @@
+# qavor library template: MySQL backing service via docker compose.
+#
+# Consume remotely (directory form — the whole template dir is materialized):
+#   kind: service
+#   name: mysql
+#   profiles:
+#     - github:rubenhak/qavor//library/mysql@<tag>
+#   env:
+#     common:
+#       MYSQL_PORT: 3307             # any parameter below can be overridden here
+#
+# Or vendor as-is: copy this file plus docker-compose.yaml into any repo of
+# your workspace — the second document below is a ready-to-use service.
+kind: profile
+name: lib-mysql
+description: MySQL dev database via docker compose. Parametrized by MYSQL_* env vars; publishes MYSQL_URL to dependents.
+mode: native
+env:
+  common:
+    MYSQL_INSTANCE:
+      default: main
+      description: Instance discriminator. Two stubs with different values give two independent databases.
+    MYSQL_PROJECT:
+      default: qavor-mysql-${MYSQL_INSTANCE}
+      description: Compose project name; also namespaces the container and data volume.
+    MYSQL_IMAGE:
+      default: mysql:8.4.5
+      description: Pinned image tag (LTS). Override per workspace to move versions.
+    MYSQL_PORT:
+      default: 3306
+      description: Host port the database is published on.
+    MYSQL_ROOT_PASSWORD:
+      default: qavor-root
+      secret: true
+      description: Root password (dev default — override for anything shared).
+    MYSQL_DATABASE:
+      default: app
+      description: Database created on first boot.
+    MYSQL_USER:
+      default: app
+      description: Application user created on first boot.
+    MYSQL_PASSWORD:
+      default: app
+      secret: true
+      description: Application user password.
+    DOCKER_NETWORK:
+      default: qavor
+      description: Shared docker network joined by all qavor library services.
+    MYSQL_READY_TIMEOUT:
+      default: "90"
+      description: Seconds `up` waits for the healthcheck before failing (first boot initializes the datadir).
+    MYSQL_LOGS_TAIL:
+      default: "100"
+      description: Lines shown by `qavor logs`.
+  publish:
+    MYSQL_HOST: 127.0.0.1
+    MYSQL_PORT: ${MYSQL_PORT}
+    MYSQL_DATABASE: ${MYSQL_DATABASE}
+    MYSQL_USER: ${MYSQL_USER}
+    MYSQL_PASSWORD:
+      value: ${MYSQL_PASSWORD}
+      secret: true
+    MYSQL_URL:
+      value: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@127.0.0.1:${MYSQL_PORT}/${MYSQL_DATABASE}
+      secret: true
+runtime:
+  native:
+    enabled: true
+    check_installed:
+      description: Check that docker and the compose v2 plugin are available.
+      operations:
+        - cmd: docker compose version >/dev/null 2>&1
+    install:
+      description: Docker with the compose plugin is required.
+      operations:
+        - cmd: echo 'Docker (with the compose v2 plugin) is not available. Install/start Docker and retry.'
+    up:
+      description: Start MySQL via docker compose and wait until healthy (idempotent).
+      operations:
+        - cmd: docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1 || docker network create "$DOCKER_NETWORK"
+        - compose:
+            action: up
+            project: ${MYSQL_PROJECT}
+            wait: true
+            timeout: ${MYSQL_READY_TIMEOUT}
+    down:
+      description: Stop and remove the MySQL container. The data volume is kept.
+      operations:
+        - compose:
+            action: down
+            project: ${MYSQL_PROJECT}
+    status:
+      description: Show the MySQL container state.
+      operations:
+        - compose:
+            action: ps
+            project: ${MYSQL_PROJECT}
+    logs:
+      description: Print recent MySQL logs.
+      operations:
+        - compose:
+            action: logs
+            project: ${MYSQL_PROJECT}
+            tail: ${MYSQL_LOGS_TAIL}
+    purge:
+      description: Stop MySQL and DELETE its data volume. Destroys all data.
+      operations:
+        - compose:
+            action: down
+            project: ${MYSQL_PROJECT}
+            volumes: true
+---
+# Ready-to-use instantiation for vendored (copy-in) consumption. Ignored when
+# the profile above is referenced remotely.
+kind: service
+name: mysql
+groups: [database]
+profiles: [lib-mysql]

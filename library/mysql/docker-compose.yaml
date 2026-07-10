@@ -1,0 +1,36 @@
+# Compose project owned by the lib-mysql qavor template. ${VAR} values are
+# interpolated by docker compose from the env qavor passes in (the composed
+# service env, with the template's defaults applied).
+services:
+  mysql:
+    image: ${MYSQL_IMAGE}
+    container_name: ${MYSQL_PROJECT}
+    ports:
+      - "${MYSQL_PORT}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    healthcheck:
+      # $$ defers expansion to the container shell, where MYSQL_ROOT_PASSWORD
+      # is set by the environment block above.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 2s
+      retries: 45
+      start_period: 10s
+    volumes:
+      - data:/var/lib/mysql
+    networks: [default]
+
+volumes:
+  # Compose prefixes the volume with the project name (qavor-mysql-<instance>_data),
+  # so instances never share data. `qavor down` keeps it; `qavor purge` removes it.
+  data: {}
+
+networks:
+  # One shared network across all qavor library services, so containers reach
+  # each other by container name. Created by the `up` pre-step.
+  default:
+    name: ${DOCKER_NETWORK}
+    external: true

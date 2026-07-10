@@ -1,0 +1,102 @@
+# qavor library template: local Kubernetes cluster via kind.
+#
+# Consume remotely (directory form):
+#   kind: service
+#   name: kind-cluster
+#   profiles:
+#     - github:rubenhak/qavor//library/kind@<tag>
+#   env:
+#     common:
+#       KIND_CLUSTER_NAME: myproj    # any parameter below can be overridden here
+#
+# Or vendor as-is: copy this file into any repo of your workspace — the second
+# document below is a ready-to-use service.
+#
+# NOTE: unlike the database templates, `down` here is destructive — a kind
+# cluster's state lives inside its node containers, so deleting the cluster
+# deletes everything deployed to it.
+kind: profile
+name: lib-kind
+description: Local Kubernetes cluster via kind. Parametrized by KIND_* env vars; publishes the kubeconfig context name to dependents.
+mode: native
+env:
+  common:
+    KIND_CLUSTER_NAME:
+      default: qavor-dev
+      description: Cluster name (also the instance discriminator; two stubs with different names give two clusters).
+    KIND_NODE_IMAGE:
+      default: kindest/node:v1.33.1
+      description: Pinned node image. Pick the tag matching your kind release.
+    KIND_CONFIG:
+      default: ""
+      description: Optional path to a kind cluster config (e.g. for extraPortMappings). Empty means kind defaults.
+    KIND_WAIT_TIMEOUT:
+      default: 180s
+      description: How long `kind create cluster --wait` and `kubectl wait` block for readiness.
+    KIND_LOGS_TAIL:
+      default: "100"
+      description: Lines shown by `qavor logs` (control-plane container logs).
+  publish:
+    KIND_CLUSTER_NAME: ${KIND_CLUSTER_NAME}
+    KUBECONFIG_CONTEXT: kind-${KIND_CLUSTER_NAME}
+runtime:
+  native:
+    enabled: true
+    check_installed:
+      description: Check kind, kubectl, and the docker daemon.
+      operations:
+        - cmd: kind version >/dev/null 2>&1 && kubectl version --client >/dev/null 2>&1 && docker info >/dev/null 2>&1
+    install:
+      description: kind, kubectl, and a running docker daemon are required.
+      operations:
+        - cmd: echo 'Install kind (https://kind.sigs.k8s.io) and kubectl, and make sure Docker is running.'
+    up:
+      description: Create the kind cluster if absent (idempotent) and wait for nodes to be Ready.
+      operations:
+        - cmd: |
+            if kind get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER_NAME"; then
+              echo "kind cluster '$KIND_CLUSTER_NAME' already exists"
+              exit 0
+            fi
+            set -- --name "$KIND_CLUSTER_NAME" --image "$KIND_NODE_IMAGE" --wait "$KIND_WAIT_TIMEOUT"
+            if [ -n "$KIND_CONFIG" ]; then set -- "$@" --config "$KIND_CONFIG"; fi
+            kind create cluster "$@"
+        - cmd: kubectl --context "kind-$KIND_CLUSTER_NAME" wait --for=condition=Ready nodes --all --timeout "$KIND_WAIT_TIMEOUT"
+    down:
+      description: DELETE the kind cluster. Destructive — cluster state lives in the node containers.
+      operations:
+        - cmd: |
+            if kind get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER_NAME"; then
+              kind delete cluster --name "$KIND_CLUSTER_NAME"
+            else
+              echo "kind cluster '$KIND_CLUSTER_NAME' not present"
+            fi
+    status:
+      description: Show the cluster and its node status.
+      operations:
+        - cmd: |
+            if kind get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER_NAME"; then
+              kubectl --context "kind-$KIND_CLUSTER_NAME" get nodes
+            else
+              echo "kind cluster '$KIND_CLUSTER_NAME' not created"
+            fi
+    logs:
+      description: Print recent control-plane container logs.
+      operations:
+        - cmd: docker logs --tail "$KIND_LOGS_TAIL" "${KIND_CLUSTER_NAME}-control-plane"
+    purge:
+      description: Same as down — DELETE the kind cluster and everything deployed to it.
+      operations:
+        - cmd: |
+            if kind get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER_NAME"; then
+              kind delete cluster --name "$KIND_CLUSTER_NAME"
+            else
+              echo "kind cluster '$KIND_CLUSTER_NAME' not present"
+            fi
+---
+# Ready-to-use instantiation for vendored (copy-in) consumption. Ignored when
+# the profile above is referenced remotely.
+kind: service
+name: kind-cluster
+groups: [k8s]
+profiles: [lib-kind]

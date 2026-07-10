@@ -20,6 +20,9 @@ export type {
   RuntimeBackend,
   RuntimeStep,
   RuntimeStepOrList,
+  CmdStep,
+  ComposeStep,
+  DockerStep,
 } from './generated.js';
 
 /**

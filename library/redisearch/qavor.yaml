@@ -1,0 +1,104 @@
+# qavor library template: RediSearch (redis-stack-server) via docker compose.
+#
+# Consume remotely (directory form — the whole template dir is materialized):
+#   kind: service
+#   name: redisearch
+#   profiles:
+#     - github:rubenhak/qavor//library/redisearch@<tag>
+#   env:
+#     common:
+#       REDIS_PORT: 6380             # any parameter below can be overridden here
+#
+# Or vendor as-is: copy this file plus docker-compose.yaml into any repo of
+# your workspace — the second document below is a ready-to-use service.
+kind: profile
+name: lib-redisearch
+description: RediSearch dev server (redis-stack-server) via docker compose. Parametrized by REDIS_* env vars; publishes REDIS_URL to dependents.
+mode: native
+env:
+  common:
+    REDIS_INSTANCE:
+      default: main
+      description: Instance discriminator. Two stubs with different values give two independent servers.
+    REDIS_PROJECT:
+      default: qavor-redisearch-${REDIS_INSTANCE}
+      description: Compose project name; also the container name and data-volume namespace.
+    REDIS_IMAGE:
+      default: redis/redis-stack-server:7.4.0-v3
+      description: Pinned image tag. redis-stack-server ships the RediSearch module.
+    REDIS_PORT:
+      default: 6379
+      description: Host port the server is published on.
+    REDIS_ARGS:
+      default: ""
+      description: Extra arguments passed to redis-stack-server (e.g. "--requirepass secret").
+    DOCKER_NETWORK:
+      default: qavor
+      description: Shared docker network joined by all qavor library services.
+    REDIS_READY_TIMEOUT:
+      default: "60"
+      description: Seconds `up` waits for the healthcheck before failing.
+    REDIS_LOGS_TAIL:
+      default: "100"
+      description: Lines shown by `qavor logs`.
+  publish:
+    REDIS_HOST: 127.0.0.1
+    REDIS_PORT: ${REDIS_PORT}
+    REDIS_URL: redis://127.0.0.1:${REDIS_PORT}
+runtime:
+  native:
+    enabled: true
+    check_installed:
+      description: Check that docker and the compose v2 plugin are available.
+      operations:
+        - cmd: docker compose version >/dev/null 2>&1
+    install:
+      description: Docker with the compose plugin is required.
+      operations:
+        - cmd: echo 'Docker (with the compose v2 plugin) is not available. Install/start Docker and retry.'
+    up:
+      description: Start RediSearch via docker compose, wait until healthy, and verify the search module is loaded.
+      operations:
+        - cmd: docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1 || docker network create "$DOCKER_NETWORK"
+        - compose:
+            action: up
+            project: ${REDIS_PROJECT}
+            wait: true
+            timeout: ${REDIS_READY_TIMEOUT}
+        - cmd: |
+            docker exec "$REDIS_PROJECT" redis-cli MODULE LIST | grep -qi search \
+              && echo "redisearch ready on port $REDIS_PORT" \
+              || { echo "search module not loaded in $REDIS_PROJECT" >&2; exit 1; }
+    down:
+      description: Stop and remove the RediSearch container. The data volume is kept.
+      operations:
+        - compose:
+            action: down
+            project: ${REDIS_PROJECT}
+    status:
+      description: Show the RediSearch container state.
+      operations:
+        - compose:
+            action: ps
+            project: ${REDIS_PROJECT}
+    logs:
+      description: Print recent RediSearch logs.
+      operations:
+        - compose:
+            action: logs
+            project: ${REDIS_PROJECT}
+            tail: ${REDIS_LOGS_TAIL}
+    purge:
+      description: Stop RediSearch and DELETE its data volume. Destroys all data.
+      operations:
+        - compose:
+            action: down
+            project: ${REDIS_PROJECT}
+            volumes: true
+---
+# Ready-to-use instantiation for vendored (copy-in) consumption. Ignored when
+# the profile above is referenced remotely.
+kind: service
+name: redisearch
+groups: [database]
+profiles: [lib-redisearch]

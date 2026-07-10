@@ -202,6 +202,38 @@ This is an **additive carve-out**, not a reversal: multi-repo bootstrap still fo
 
 ---
 
+## ADR-008 — Declarative runtime steps: **`compose:` and `docker:` step kinds alongside shell `cmd:` steps**
+
+**Status:** Accepted (2026-07).
+
+**Context.** A command's `operations` historically accepted only shell `cmd` steps. Bringing up backing services (postgres, mysql, redis, …) through raw shell meant fragile `docker run`/`docker compose` one-liners, heredoc-generated compose files, and hand-rolled readiness loops — exactly the kind of duplicated plumbing a shared template library would copy into every workspace. qavor stays a lean wrapper (ADR-001/AGENTS §1): it should *model* these operations, not reimplement docker.
+
+**Options considered.**
+- **Shell only (status quo)** — no new surface, but every template hand-writes triage/wait/quoting logic; heredocs inside YAML block scalars are the worst artifact.
+- **A separate supervisor/compose engine** — rejected with ADR-002's supersession; qavor does not own process lifecycles.
+- **Declarative step kinds (chosen)** — a step carries exactly one kind key: `cmd` (unchanged), `compose` (`{ action, file, project, wait, … }` → `docker compose …`), or `docker` (`{ action, name, image, … }` → `docker …`). Rich modeled arguments plus a raw `args: []` escape hatch.
+
+**Decision.** `runtimeStep` becomes a keyed union (`cmd` | `compose` | `docker`). Declarative steps interpolate `${VAR}` in their fields from the composed service env (fail-closed, same rules as env values; `${secret:…}` reserved), then shell out to the docker CLI via execa — no daemon API, no compose reimplementation. `compose.action: up` maps to `up -d [--wait]`; `docker.action: up`/`down` are idempotent ensure-running / stop-and-remove lifecycles, the other actions map 1:1 onto CLI primitives. The composed env is passed to `docker compose`, so compose files parametrize themselves with native `${VAR}` interpolation.
+
+**Consequences.**
+- **Origin-dir tracking.** Steps flattened from a profile are stamped (internal `$dir` annotation, post-validation) with the profile's own directory; `cwd`, `file:` and `env_file:` resolve against it, and each step sees `QAVOR_MANIFEST_DIR`. This also fixes `cwd` resolution for profile-contributed `cmd` steps, which previously resolved against the referencing service's dir.
+- **Readiness without a supervisor.** `wait: true` uses `docker compose up --wait` / health-status polling inside the step — `waitFor: ready` graph gating remains deferred.
+- **ADR-005 narrowed.** The planned generate-and-own compose project is superseded at step granularity: compose files are authored (or vendored) next to manifests and referenced by `file:`, rather than generated into `.qavor/compose/`.
+
+---
+
+## ADR-009 — Remote profile directory sources: **a `profiles:` ref may point at a directory; the whole tree is materialized**
+
+**Status:** Accepted (2026-07).
+
+**Context.** ADR-007 fetches a single profile document. Templates that carry supporting files (a `docker-compose.yaml`, config files) need those siblings present locally; an explicit per-file `assets:` list was considered and rejected — convention over configuration.
+
+**Decision.** A source whose path does **not** end in `.yaml`/`.yml` is a **directory reference**: the profile is read from `<dir>/qavor.yaml` and the entire directory tree is materialized locally. `file://`/relative dirs are used in place; git sources already clone the whole repo; `github:` sources (and `/tree/<ref>/` page URLs) list the tree via the GitHub API and download the blobs into a per-source cache dir (capped at 100 files / 10 MB, fail-closed). Plain https directory references fail closed with guidance — a generic web server cannot be enumerated. `@ref` is the pin for directory sources; `#sha256=`/`integrity:` pins the `qavor.yaml` content only.
+
+**Consequences.** Combined with ADR-008's origin-dir tracking, a remote template's `file: ./docker-compose.yaml` resolves into the materialized directory uniformly across all backends. The first-party template collection under `library/` is built entirely on this (see `library/README.md`).
+
+---
+
 ## Decision summary table
 
 | ADR | Topic | Decision |
@@ -210,6 +242,8 @@ This is an **additive carve-out**, not a reversal: multi-repo bootstrap still fo
 | 002 | Process supervision | *Superseded for native* (no built-in supervisor; `run` is a foreground manifest command). Compose for docker / docker-compose still planned. |
 | 003 | Container runtime | **Docker only at v0**; pluggable later |
 | 004 | Bootstrap | **`qavor init <project-repo-source>`** — project repo is the seed; `kind: workspaces` pointer is generated |
-| 005 | Compose file | Generated-and-owned, with overlay overrides |
+| 005 | Compose file | Generated-and-owned, with overlay overrides — *narrowed by ADR-008*: compose files are authored next to manifests and referenced by declarative `compose:` steps |
 | 006 | State directory | Per-workspace `./.qavor/` + global `~/.cache/qavor/` |
 | 007 | Remote profile sources | `profiles:` may reference a URL / git / file source; fetched, pinned, cached at registry-build time |
+| 008 | Declarative runtime steps | `runtimeStep` is a keyed union: shell `cmd`, `compose` (docker compose), `docker` (single container); `${VAR}` interpolated fail-closed; docker CLI via execa |
+| 009 | Remote profile directory sources | A non-`.yaml` source path materializes the whole directory (`<dir>/qavor.yaml` + siblings); GitHub via tree API, plain https fails closed |
