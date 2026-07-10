@@ -1,0 +1,114 @@
+# qavor library template: PostgreSQL backing service via docker compose.
+#
+# Consume remotely (directory form — the whole template dir is materialized):
+#   kind: service
+#   name: postgresql
+#   profiles:
+#     - github:rubenhak/qavor//library/postgresql@<tag>
+#   env:
+#     common:
+#       POSTGRES_PORT: 5433          # any parameter below can be overridden here
+#
+# Or vendor as-is: copy this file plus docker-compose.yaml into any repo of
+# your workspace — the second document below is a ready-to-use service.
+kind: profile
+name: lib-postgresql
+description: PostgreSQL dev database via docker compose. Parametrized by POSTGRES_* env vars; publishes POSTGRES_URL to dependents.
+mode: native
+env:
+  common:
+    POSTGRES_INSTANCE:
+      default: main
+      description: Instance discriminator. Two stubs with different values give two independent databases.
+    POSTGRES_PROJECT:
+      default: qavor-pg-${POSTGRES_INSTANCE}
+      description: Compose project name; also namespaces the container and data volume.
+    POSTGRES_IMAGE:
+      default: postgres:17.5-alpine
+      description: Pinned image tag. Override per workspace to move versions.
+    POSTGRES_PORT:
+      default: 5432
+      description: Host port the database is published on.
+    POSTGRES_USER:
+      default: app
+      description: Application user created on first boot.
+    POSTGRES_PASSWORD:
+      default: app
+      secret: true
+      description: Application user password (dev default — override for anything shared).
+    POSTGRES_DB:
+      default: app
+      description: Database created on first boot.
+    DOCKER_NETWORK:
+      default: qavor
+      description: Shared docker network joined by all qavor library services.
+    POSTGRES_READY_TIMEOUT:
+      default: "60"
+      description: Seconds `up` waits for the healthcheck before failing.
+    POSTGRES_LOGS_TAIL:
+      default: "100"
+      description: Lines shown by `qavor logs`.
+  publish:
+    POSTGRES_HOST: 127.0.0.1
+    POSTGRES_PORT: ${POSTGRES_PORT}
+    POSTGRES_DB: ${POSTGRES_DB}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD:
+      value: ${POSTGRES_PASSWORD}
+      secret: true
+    POSTGRES_URL:
+      value: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}
+      secret: true
+runtime:
+  native:
+    enabled: true
+    check_installed:
+      description: Check that docker and the compose v2 plugin are available.
+      operations:
+        - cmd: docker compose version >/dev/null 2>&1
+    install:
+      description: Docker with the compose plugin is required.
+      operations:
+        - cmd: echo 'Docker (with the compose v2 plugin) is not available. Install/start Docker and retry.'
+    up:
+      description: Start PostgreSQL via docker compose and wait until healthy (idempotent).
+      operations:
+        - cmd: docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1 || docker network create "$DOCKER_NETWORK"
+        - compose:
+            action: up
+            project: ${POSTGRES_PROJECT}
+            wait: true
+            timeout: ${POSTGRES_READY_TIMEOUT}
+    down:
+      description: Stop and remove the PostgreSQL container. The data volume is kept.
+      operations:
+        - compose:
+            action: down
+            project: ${POSTGRES_PROJECT}
+    status:
+      description: Show the PostgreSQL container state.
+      operations:
+        - compose:
+            action: ps
+            project: ${POSTGRES_PROJECT}
+    logs:
+      description: Print recent PostgreSQL logs.
+      operations:
+        - compose:
+            action: logs
+            project: ${POSTGRES_PROJECT}
+            tail: ${POSTGRES_LOGS_TAIL}
+    purge:
+      description: Stop PostgreSQL and DELETE its data volume. Destroys all data.
+      operations:
+        - compose:
+            action: down
+            project: ${POSTGRES_PROJECT}
+            volumes: true
+---
+# Ready-to-use instantiation for vendored (copy-in) consumption. Ignored when
+# the profile above is referenced remotely.
+kind: service
+name: postgresql
+groups: [database]
+profiles: [lib-postgresql]

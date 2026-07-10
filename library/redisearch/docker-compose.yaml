@@ -1,0 +1,31 @@
+# Compose project owned by the lib-redisearch qavor template. ${VAR} values are
+# interpolated by docker compose from the env qavor passes in (the composed
+# service env, with the template's defaults applied).
+services:
+  redisearch:
+    image: ${REDIS_IMAGE}
+    container_name: ${REDIS_PROJECT}
+    ports:
+      - "${REDIS_PORT}:6379"
+    environment:
+      REDIS_ARGS: ${REDIS_ARGS}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 2s
+      retries: 30
+      start_period: 5s
+    volumes:
+      - data:/data
+    networks: [default]
+
+volumes:
+  # Compose prefixes the volume with the project name (qavor-redisearch-<instance>_data),
+  # so instances never share data. `qavor down` keeps it; `qavor purge` removes it.
+  data: {}
+
+networks:
+  # One shared network across all qavor library services, so containers reach
+  # each other by container name. Created by the `up` pre-step.
+  default:
+    name: ${DOCKER_NETWORK}
+    external: true
