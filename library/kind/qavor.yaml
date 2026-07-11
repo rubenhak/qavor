@@ -82,11 +82,17 @@ runtime:
             kind create cluster "$@"
         - cmd: |
             # CI / docker-in-docker: when qavor itself runs inside a container, the
-            # kind node containers are siblings on the docker host. kind writes a
-            # kubeconfig pointing at 127.0.0.1:<hostport>, which lives in the host's
-            # network namespace — not this container's — so kubectl fails with
-            # "connect: connection refused". Join the kind docker network and switch
-            # to the internal kubeconfig (server = https://<cluster>-control-plane:6443).
+            # kind node containers are siblings on the docker host, on the "kind"
+            # docker network. This container isn't a member of that network by
+            # default, so the internal kubeconfig's server name
+            # (https://<cluster>-control-plane:6443) won't resolve. Join it here —
+            # docker network connect works against a sibling container via the
+            # shared docker socket even though we're not on the host netns.
+            if [ -f /.dockerenv ]; then
+              echo "🏗️🏗️🏗️ Joining container \"$(hostname)\" to docker network \"kind\"..."
+              docker network connect kind "$(hostname)" 2>/dev/null || true
+            fi
+        - cmd: |
             echo "🏗️🏗️🏗️ Getting external kube config..."
             KUBE_CONFIG_DIR=$(dirname "${KIND_KUBECONFIG_EXTERNAL_FILE}")
             mkdir -p "${KUBE_CONFIG_DIR}"
