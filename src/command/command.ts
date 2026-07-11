@@ -3,13 +3,7 @@ import { type Options as ExecaOptions, execa } from 'execa';
 import { assertNoIssues, composeServiceEnv, toEnvObject } from '../env/composer.js';
 import type { LoadedDocument } from '../manifest/loader.js';
 import { serviceCommandSteps } from '../manifest/runtime.js';
-import {
-  composeStepOf,
-  describeStep,
-  dockerStepOf,
-  isCmdStep,
-  stepOriginDir,
-} from '../manifest/steps.js';
+import { composeStepOf, dockerStepOf, isCmdStep, stepOriginDir } from '../manifest/steps.js';
 import type { ServiceManifest } from '../manifest/types/index.js';
 import { RuntimeFailure } from '../util/exit-codes.js';
 import { runHooks } from '../util/hooks.js';
@@ -17,7 +11,7 @@ import type { Logger } from '../util/logger.js';
 import type { WorkspacePaths } from '../workspace/paths.js';
 import { runComposeStep } from './compose-step.js';
 import { runDockerStep } from './docker-step.js';
-import type { DeclarativeStepContext } from './exec.js';
+import { type DeclarativeStepContext, prefixStepOutput } from './exec.js';
 
 export interface RunCommandInput {
   /** The dynamic command name (e.g. `prepare`, `update_libraries`, `lint`). */
@@ -101,20 +95,21 @@ export async function runServiceCommand(input: RunCommandInput): Promise<RunComm
   // resolve against the defining manifest's dir — the profile's own
   // (materialized) directory for profile-contributed steps.
   for (const [index, step] of steps.entries()) {
-    const stepLabel = steps.length > 1 ? ` (step ${index + 1}/${steps.length})` : '';
+    const stepNo = index + 1;
+    const stepLabel = steps.length > 1 ? ` (step ${stepNo}/${steps.length})` : '';
     const originDir = stepOriginDir(step) ?? manifestDir;
     const stepEnv = { ...env, QAVOR_MANIFEST_DIR: originDir };
-    input.logger.info(
-      {
-        service: input.service.name,
-        command: input.command,
-        cmd: describeStep(step),
-        step: index + 1,
-        steps: steps.length,
-      },
-      `${input.command}: starting`,
-    );
+    // A single concise banner per step — no field dump, no raw-script echo.
+    // Raw output (streamed only under --serial --verbose) is indented and
+    // `|`-prefixed by the step's execa stdout/stderr transform so it reads as
+    // nested under this line, bookended by the matching done/failed line below.
+    const marker = `${input.service.name}:${input.command} [${stepNo}/${steps.length}]`;
+    // A lone space, not '': pino-pretty drops a truly empty message line
+    // outright (no fields, no EOL), so it wouldn't render as a blank line at all.
+    input.logger.info(' ');
+    input.logger.info(`🔨 ${marker}`);
 
+    const startedAt = Date.now();
     try {
       if (isCmdStep(step)) {
         const cwd = step.cwd ? path.resolve(manifestDir, step.cwd) : manifestDir;
@@ -122,7 +117,13 @@ export async function runServiceCommand(input: RunCommandInput): Promise<RunComm
         const opts: ExecaOptions = {
           cwd,
           env: { ...process.env, ...stepEnv },
-          stdio: stream ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'ignore', 'ignore'],
+          ...(stream
+            ? {
+                stdin: 'ignore',
+                stdout: [prefixStepOutput, 'inherit'],
+                stderr: [prefixStepOutput, 'inherit'],
+              }
+            : { stdio: ['ignore', 'ignore', 'ignore'] }),
           ...(input.signal ? { cancelSignal: input.signal } : {}),
           reject: false,
         };
@@ -150,7 +151,9 @@ export async function runServiceCommand(input: RunCommandInput): Promise<RunComm
         else if (docker) await runDockerStep(docker, ctx);
         else throw new RuntimeFailure(`Unrecognized step shape${stepLabel}.`);
       }
+      input.logger.info(`✓ ${marker} (${formatDuration(Date.now() - startedAt)})`);
     } catch (err) {
+      input.logger.error(`✗ ${marker} (${formatDuration(Date.now() - startedAt)})`);
       if (err instanceof RuntimeFailure) throw err;
       const message = err instanceof Error ? err.message : String(err);
       throw new RuntimeFailure(
@@ -169,4 +172,9 @@ export async function runServiceCommand(input: RunCommandInput): Promise<RunComm
   });
 
   return { serviceName: input.service.name, status: 'ok' };
+}
+
+/** Render a millisecond duration as a short human string (`420ms`, `3.1s`). */
+function formatDuration(ms: number): string {
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }

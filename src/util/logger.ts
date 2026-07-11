@@ -1,4 +1,5 @@
 import pino, { type Logger as PinoLogger } from 'pino';
+import prettyFactory from 'pino-pretty';
 
 export type Logger = PinoLogger;
 
@@ -17,21 +18,28 @@ export function configureLogger(opts: LoggerOptions): Logger {
   if (opts.json || !stderrIsTty) {
     rootLogger = pino({ level }, pino.destination({ fd: 2, sync: true }));
   } else {
-    rootLogger = pino({
-      level,
-      transport: {
-        target: 'pino-pretty',
-        options: {
-          destination: 2,
-          colorize: stderrIsTty,
-          translateTime: false,
-          ignore: 'pid,hostname,time',
-          messageFormat: '{msg}',
-          singleLine: false,
-          sync: true,
-        },
-      },
+    // pino-pretty is built in-process here (not via `transport:`) so it writes
+    // synchronously on the main thread. `transport:` always spins pino-pretty up
+    // on a worker thread, which formats/writes asynchronously — a log call
+    // returns before its line actually lands on fd 2. That races against any
+    // child process spawned right after with `stdio: 'inherit'` (declarative
+    // steps stream raw command output straight to the same fd), so the two
+    // sources land on the terminal out of order. Formatting in-process makes a
+    // log call's write happen before it returns, so it stays ordered relative
+    // to inherited child stdio.
+    const stream = prettyFactory({
+      destination: 2,
+      colorize: stderrIsTty,
+      translateTime: false,
+      // `level` is dropped too: qavor's own log calls fold severity into the
+      // message itself (a `✗`/`✓` marker, or plain wording), so the `INFO:`/
+      // `ERROR:` tag pino-pretty would otherwise prepend is redundant noise.
+      ignore: 'pid,hostname,time,level',
+      messageFormat: '{msg}',
+      singleLine: false,
+      sync: true,
     });
+    rootLogger = pino({ level }, stream);
   }
   return rootLogger;
 }
