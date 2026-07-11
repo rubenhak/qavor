@@ -171,6 +171,9 @@ function renderStatic<R>(
   }
   const layout = computeLayout(renderer.columns, labels, process.stdout.columns ?? 80);
   const ctx: RowContext = { layout, c, g, spinner: '' };
+  // Separates the table from whatever preceded it — most notably a verbose
+  // run's streamed per-step output, which lands right above this on stderr.
+  emit('');
   emit(headerLine(renderer.columns, layout, c));
   for (const [i, label] of labels.entries()) {
     emit(joinCells(renderer.cells(label, states[i] ?? null, ctx)));

@@ -30,6 +30,14 @@ export interface DeclarativeStepContext {
   signal?: AbortSignal;
 }
 
+/** Left margin for a streamed step's raw output, so it reads as nested under its `🔨` banner line rather than blending into qavor's own log lines. */
+const RAW_OUTPUT_PREFIX = '|    ';
+
+/** execa stdout/stderr transform: prefixes every line of a streamed step's raw output. */
+export function* prefixStepOutput(line: unknown): Generator<string> {
+  yield `${RAW_OUTPUT_PREFIX}${line as string}`;
+}
+
 /** Run `docker <argv>`; non-zero exit raises a RuntimeFailure with `label` context. */
 export async function execDocker(
   argv: string[],
@@ -54,8 +62,11 @@ export async function captureDocker(
   cwd?: string,
 ): Promise<{ exitCode: number; stdout: string }> {
   const res = await execa('docker', argv, {
-    ...execOpts(ctx, cwd),
+    cwd: cwd ?? ctx.serviceDir,
+    env: ctx.env,
     stdio: ['ignore', 'pipe', 'ignore'],
+    ...(ctx.signal ? { cancelSignal: ctx.signal } : {}),
+    reject: false,
   });
   const stdout = typeof res.stdout === 'string' ? res.stdout.trim() : '';
   return { exitCode: res.exitCode ?? 1, stdout };
@@ -65,7 +76,13 @@ function execOpts(ctx: DeclarativeStepContext, cwd?: string): ExecaOptions {
   return {
     cwd: cwd ?? ctx.serviceDir,
     env: ctx.env,
-    stdio: ctx.stream ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'ignore', 'ignore'],
+    ...(ctx.stream
+      ? {
+          stdin: 'ignore',
+          stdout: [prefixStepOutput, 'inherit'],
+          stderr: [prefixStepOutput, 'inherit'],
+        }
+      : { stdio: ['ignore', 'ignore', 'ignore'] }),
     ...(ctx.signal ? { cancelSignal: ctx.signal } : {}),
     reject: false,
   };

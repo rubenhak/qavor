@@ -58,13 +58,3 @@ export function stepOriginDir(step: RuntimeStep): string | undefined {
   const dir = (step as AnnotatedStep)[STEP_ORIGIN_KEY];
   return typeof dir === 'string' && dir.length > 0 ? dir : undefined;
 }
-
-/** One-line human label for a step, used in logs and failure messages. */
-export function describeStep(step: RuntimeStep): string {
-  if (isCmdStep(step)) return step.cmd;
-  const compose = composeStepOf(step);
-  if (compose) return `compose ${compose.action}`;
-  const docker = dockerStepOf(step);
-  if (docker) return `docker ${docker.action} ${docker.name}`;
-  return '(unknown step)';
-}
