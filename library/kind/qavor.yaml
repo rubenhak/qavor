@@ -56,7 +56,6 @@ env:
   publish:
     KIND_CLUSTER_NAME: ${KIND_CLUSTER_NAME}
     KUBECONFIG_CONTEXT: kind-${KIND_CLUSTER_NAME}
-    # KUBECONFIG: ${QAVOR_SERVICE_DIR}/${KIND_KUBECONFIG_FILE}
 runtime:
   native:
     enabled: true
@@ -96,36 +95,12 @@ runtime:
             KUBE_CONFIG_DIR=$(dirname "${KIND_KUBECONFIG_INTERNAL_FILE}")
             mkdir -p "${KUBE_CONFIG_DIR}"
             kind get kubeconfig --name "$KIND_CLUSTER_NAME" --internal > "$KIND_KUBECONFIG_INTERNAL_FILE"
-            # if [ -f /.dockerenv ]; then
-            #   docker network connect kind "$(hostname)" 2>/dev/null || true
-            #   kind get kubeconfig --name "$KIND_CLUSTER_NAME" --internal > "$KIND_KUBECONFIG_FILE"
-            # fi
         - cmd: |
             echo "🏗️🏗️🏗️ Waiting for the cluster to come up..."
-            if [ -f /.dockerenv ]; then
-              export KUBECONFIG=${KIND_KUBECONFIG_INTERNAL_FILE}
-            else
-              export KUBECONFIG=${KIND_KUBECONFIG_EXTERNAL_FILE}
-            fi
             echo "🏗️🏗️🏗️ KUBECONFIG: $KUBECONFIG"
             kubectl wait --for=condition=Ready nodes --all --timeout "$KIND_WAIT_TIMEOUT"
         - cmd: |
-            echo "🏗️🏗️🏗️ Listing pods..."
-            if [ -f /.dockerenv ]; then
-              export KUBECONFIG=${KIND_KUBECONFIG_INTERNAL_FILE}
-            else
-              export KUBECONFIG=${KIND_KUBECONFIG_EXTERNAL_FILE}
-            fi
-            echo "🏗️🏗️🏗️ KUBECONFIG: $KUBECONFIG"
-            kubectl get pods -A
-        - cmd: |
             echo "🏗️🏗️🏗️ Sample Manifests Dir: ${KIND_SAMPLE_MANIFESTS_DIR}"
-            if [ -f /.dockerenv ]; then
-              export KUBECONFIG=${KIND_KUBECONFIG_INTERNAL_FILE}
-            else
-              export KUBECONFIG=${KIND_KUBECONFIG_EXTERNAL_FILE}
-            fi
-            echo "🏗️🏗️🏗️ KUBECONFIG: $KUBECONFIG"
             if [ -n "${KIND_SAMPLE_MANIFESTS_DIR}" ]; then
               kubectl apply -f "${KIND_SAMPLE_MANIFESTS_DIR}"
             fi
