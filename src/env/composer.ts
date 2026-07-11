@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { execa } from 'execa';
 import type { RegistryEntry, WorkspaceRegistry } from '../manifest/discovery.js';
 import type { LoadedDocument, PositionResolver } from '../manifest/loader.js';
 import type {
@@ -8,7 +9,7 @@ import type {
   Requirement,
   ServiceManifest,
 } from '../manifest/types/index.js';
-import { ManifestError, UserError } from '../util/exit-codes.js';
+import { ManifestError, RuntimeFailure, UserError } from '../util/exit-codes.js';
 import { loadDotenvFile } from './dotenv.js';
 
 export type RunMode = 'native' | 'docker';
@@ -57,6 +58,8 @@ export interface ServiceCompositionInput {
   workspaceRoot: string;
   /** CLI --env KEY=VAL entries. */
   cliEnv?: Record<string, string>;
+  /** Aborts any in-flight `cmd:` env script. */
+  signal?: AbortSignal;
 }
 
 export interface UnitCompositionInput {
@@ -70,6 +73,8 @@ export interface UnitCompositionInput {
   workspaceRoot: string;
   /** CLI --env KEY=VAL entries. */
   cliEnv?: Record<string, string>;
+  /** Aborts any in-flight `cmd:` env script. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -97,7 +102,7 @@ export async function composeServiceEnv(input: ServiceCompositionInput): Promise
   });
   await loadWorkspaceDotenv(layers, input.workspaceRoot);
   appendCliLayers(layers, input.cliEnv);
-  return interpolateLayers(layers, issues);
+  return interpolateLayers(layers, issues, input.signal);
 }
 
 /**
@@ -140,6 +145,7 @@ export async function composeUnitEnv(input: UnitCompositionInput): Promise<Resol
         issues,
         'env.publish',
         input.workspaceRoot,
+        input.signal,
       )),
     );
   }
@@ -148,7 +154,7 @@ export async function composeUnitEnv(input: UnitCompositionInput): Promise<Resol
   await loadWorkspaceDotenv(layers, input.workspaceRoot);
   appendCliLayers(layers, input.cliEnv);
 
-  return interpolateLayers(layers, issues);
+  return interpolateLayers(layers, issues, input.signal);
 }
 
 interface LayerEntry {
@@ -158,6 +164,11 @@ interface LayerEntry {
   file: string;
   line: number;
   spec: EnvSpec | null;
+  /** Set when this entry is a dynamic `cmd:` env var — resolved in phase 2, after every static entry. */
+  cmd?: string;
+  shell?: string;
+  /** Working directory `cmd` runs in: the defining manifest's directory. */
+  cwd?: string;
 }
 
 /** Env block accessor for a registry entry. */
@@ -183,12 +194,36 @@ async function collectOwnEnvLayers(args: {
   const layers: LayerEntry[] = [];
 
   if (env?.common) {
-    pushEnvMap(layers, env.common, `${layerPrefix}.env.common`, file, position, '/env/common');
+    pushEnvMap(
+      layers,
+      env.common,
+      `${layerPrefix}.env.common`,
+      file,
+      position,
+      '/env/common',
+      manifestDir,
+    );
   }
   if (mode === 'native' && env?.native) {
-    pushEnvMap(layers, env.native, `${layerPrefix}.env.native`, file, position, '/env/native');
+    pushEnvMap(
+      layers,
+      env.native,
+      `${layerPrefix}.env.native`,
+      file,
+      position,
+      '/env/native',
+      manifestDir,
+    );
   } else if (mode === 'docker' && env?.docker) {
-    pushEnvMap(layers, env.docker, `${layerPrefix}.env.docker`, file, position, '/env/docker');
+    pushEnvMap(
+      layers,
+      env.docker,
+      `${layerPrefix}.env.docker`,
+      file,
+      position,
+      '/env/docker',
+      manifestDir,
+    );
   }
 
   // .env next to the manifest.
@@ -300,6 +335,7 @@ async function appendRequireLayers(
           issues,
           `require:${dep.name}.publish`,
           ctx.workspaceRoot,
+          ctx.signal,
         )),
       );
     } else {
@@ -330,6 +366,7 @@ async function resolvePublishLayers(
   issues: ManifestComposeIssue[],
   label: string,
   workspaceRoot: string,
+  signal?: AbortSignal,
 ): Promise<LayerEntry[]> {
   const env = entryEnvBlock(dep);
   const publish = env?.publish;
@@ -343,7 +380,7 @@ async function resolvePublishLayers(
     position: dep.position,
     layerPrefix: `service:${dep.name}`,
   });
-  const ownScope = interpolateLayers(ownLayers, []);
+  const ownScope = await interpolateLayers(ownLayers, [], signal);
 
   // Publish values may reference the publishing service's own location so a
   // backing service can hand dependents an absolute path (e.g. a kubeconfig it
@@ -394,12 +431,29 @@ function pushEnvMap(
   file: string,
   positionFor: LoadedDocument['position'],
   basePath: string,
+  manifestDir: string,
 ): void {
   for (const [key, val] of Object.entries(map)) {
     const valuePath = `${basePath}/${key}`;
     const pos = positionFor(valuePath);
     if (isEnvSpec(val)) {
       const spec = val as EnvSpec;
+      if (typeof spec.cmd === 'string') {
+        // Dynamic entry: resolved in phase 2, after every static entry (see
+        // interpolateLayers). `raw` is unused for this kind of entry.
+        layers.push({
+          key,
+          raw: '',
+          layer: layerLabel,
+          file,
+          line: pos.line,
+          spec,
+          cmd: spec.cmd,
+          shell: spec.shell,
+          cwd: manifestDir,
+        });
+        continue;
+      }
       const concrete =
         typeof spec.value !== 'undefined'
           ? spec.value
@@ -447,6 +501,8 @@ function isEnvSpec(v: unknown): v is EnvSpec {
       !Array.isArray(v) &&
       ('value' in (v as object) ||
         'default' in (v as object) ||
+        'cmd' in (v as object) ||
+        'shell' in (v as object) ||
         'required' in (v as object) ||
         'secret' in (v as object) ||
         'type' in (v as object) ||
@@ -458,7 +514,43 @@ function isEnvSpec(v: unknown): v is EnvSpec {
 const INTERP_RE = /\$\{([^}]+)\}/g;
 const SECRET_PREFIX = 'secret:';
 
-function interpolateLayers(layers: LayerEntry[], issues: ManifestComposeIssue[]): ResolvedEnv {
+/**
+ * Resolve a layer chain in two phases: every static entry first (`value:`,
+ * `default:`, `.env` files, requires, CLI `--env`), then every `cmd:` entry,
+ * in original layer order — so a dynamic env script's subprocess env already
+ * contains the fully-resolved static scope. A `cmd` entry for an
+ * already-defined key overwrites it (later wins), mirroring the static pass.
+ */
+async function interpolateLayers(
+  layers: LayerEntry[],
+  issues: ManifestComposeIssue[],
+  signal?: AbortSignal,
+): Promise<ResolvedEnv> {
+  const staticLayers = layers.filter((l) => typeof l.cmd !== 'string');
+  const dynamicLayers = layers.filter((l) => typeof l.cmd === 'string');
+  const values = resolveStaticLayers(staticLayers, issues);
+  if (dynamicLayers.length > 0) {
+    await resolveDynamicLayers(dynamicLayers, values, signal);
+  }
+  // Surface missing-required errors after both phases — a `cmd` entry can
+  // satisfy a `required` key just as well as a static one.
+  for (const [key, val] of values) {
+    if (val.required && (val.value === '' || typeof val.value === 'undefined')) {
+      const last = val.provenance[val.provenance.length - 1];
+      issues.push({
+        file: last?.file ?? '<unknown>',
+        line: last?.line ?? 0,
+        message: `Required env ${key} has no value.`,
+      });
+    }
+  }
+  return { values, issues };
+}
+
+function resolveStaticLayers(
+  layers: LayerEntry[],
+  issues: ManifestComposeIssue[],
+): Map<string, ResolvedValue> {
   // Resolve layer-by-layer, later wins. We interpolate against the
   // running map plus process.env for `${VAR}` references.
   const values = new Map<string, ResolvedValue>();
@@ -509,18 +601,70 @@ function interpolateLayers(layers: LayerEntry[], issues: ManifestComposeIssue[])
       required: Boolean(entry.spec?.required) || (prior?.required ?? false),
     });
   }
-  // Surface missing-required errors after the full chain.
-  for (const [key, val] of values) {
-    if (val.required && (val.value === '' || typeof val.value === 'undefined')) {
-      const last = val.provenance[val.provenance.length - 1];
-      issues.push({
-        file: last?.file ?? '<unknown>',
-        line: last?.line ?? 0,
-        message: `Required env ${key} has no value.`,
+  return values;
+}
+
+/**
+ * Run every deferred `cmd:` entry, in order, against a shell. Each script's
+ * subprocess env is `process.env` plus every value resolved so far (the full
+ * static scope, plus any earlier `cmd` in this same pass) — so scripts read
+ * other vars as ordinary shell variables (`$FOO`), never qavor's `${VAR}`
+ * interpolation. stdout (trimmed) becomes the value; a non-zero exit or spawn
+ * failure is a runtime error (exit 3), not a manifest error — it fails the
+ * whole composition rather than collecting as a composition issue.
+ */
+async function resolveDynamicLayers(
+  entries: LayerEntry[],
+  values: Map<string, ResolvedValue>,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  for (const entry of entries) {
+    const shell = entry.shell ?? '/bin/sh';
+    const scriptEnv: NodeJS.ProcessEnv = { ...process.env };
+    for (const [k, v] of values) scriptEnv[k] = v.value;
+
+    const where = `${entry.key} (${entry.layer} @ ${entry.file}:${entry.line})`;
+    let res: Awaited<ReturnType<typeof execa>>;
+    try {
+      res = await execa(shell, ['-c', entry.cmd as string], {
+        cwd: entry.cwd,
+        env: scriptEnv,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        reject: false,
+        ...(signal ? { cancelSignal: signal } : {}),
       });
+    } catch (err) {
+      throw new RuntimeFailure(
+        `Failed to run env cmd for ${where}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
+    if (res.exitCode !== 0) {
+      const stderrTail = String(res.stderr ?? '')
+        .trim()
+        .split('\n')
+        .slice(-5)
+        .join('\n');
+      throw new RuntimeFailure(
+        `env cmd for ${where} failed (exit ${res.exitCode ?? 'unknown'}).${stderrTail ? `\n${stderrTail}` : ''}`,
+      );
+    }
+
+    const value = String(res.stdout ?? '').trim();
+    const prior = values.get(entry.key);
+    const provenance = prior ? prior.provenance.slice() : [];
+    provenance.push({
+      file: entry.file,
+      line: entry.line,
+      layer: entry.layer,
+      raw: value,
+    });
+    values.set(entry.key, {
+      value,
+      provenance,
+      secret: Boolean(entry.spec?.secret) || (prior?.secret ?? false),
+      required: Boolean(entry.spec?.required) || (prior?.required ?? false),
+    });
   }
-  return { values, issues };
 }
 
 function interpolate(

@@ -57,6 +57,7 @@ export async function runServiceCommand(input: RunCommandInput): Promise<RunComm
     service: input.service,
     workspaceRoot: input.paths.root,
     ...(input.cliEnv ? { cliEnv: input.cliEnv } : {}),
+    ...(input.signal ? { signal: input.signal } : {}),
   });
   assertNoIssues(envRes);
   // Expose the running command name plus the workspace/project/service locations
