@@ -189,6 +189,40 @@ test('env: cmd resolves after static entries and can reference them as shell var
   }
 });
 
+test('env: cmd provenance records the resolved value, not the script', async () => {
+  const { workspaceRoot, manifestFile, cleanupFn } = await setup({
+    manifest: [
+      'kind: service',
+      'name: alpha',
+      'env:',
+      '  common:',
+      '    HOST: { default: localhost }',
+      '    PORT: { default: 8080 }',
+      '    URL: { cmd: \'echo "http://$HOST:$PORT/api"\' }',
+      'runtime:',
+      '  native:',
+      '    enabled: true',
+      '    run: { operations: { cmd: "true" } }',
+      '',
+    ].join('\n'),
+  });
+  try {
+    const docs = await loadManifestFile(manifestFile);
+    const composed = await composeServiceEnv({
+      mode: 'native',
+      serviceDoc: docs[0]!,
+      service: docs[0]?.data as unknown as ServiceManifest,
+      workspaceRoot,
+    });
+    const url = composed.values.get('URL');
+    assert.equal(url?.value, 'http://localhost:8080/api');
+    const lastProvenance = url?.provenance[url.provenance.length - 1];
+    assert.equal(lastProvenance?.raw, 'http://localhost:8080/api');
+  } finally {
+    await cleanupFn();
+  }
+});
+
 test('env: cmd stdout is trimmed and overrides a static value for the same key', async () => {
   const { workspaceRoot, manifestFile, cleanupFn } = await setup({
     manifest: [

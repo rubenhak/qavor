@@ -656,7 +656,7 @@ async function resolveDynamicLayers(
       file: entry.file,
       line: entry.line,
       layer: entry.layer,
-      raw: `cmd: ${entry.cmd}`,
+      raw: value,
     });
     values.set(entry.key, {
       value,
