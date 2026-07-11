@@ -20,12 +20,20 @@
       "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }]
     },
     "envSpec": {
-      "description": "Long-form env entry. Use when you need typing, validation, default vs override, secret marking, or documentation.",
+      "description": "Long-form env entry. Use when you need typing, validation, default vs override, secret marking, documentation, or a dynamically-computed value (`cmd`).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "value": { "$ref": "#/$defs/envScalar" },
         "default": { "$ref": "#/$defs/envScalar" },
+        "cmd": {
+          "type": "string",
+          "description": "Shell script whose stdout (trimmed) becomes this var's value. Runs after every static env entry (value/default, .env files, requires, CLI --env) is fully resolved, so the script's environment already contains the static-resolved scope — reference other vars as ordinary shell variables (`$FOO` / `${FOO}`), not qavor's `${VAR}` interpolation. Mutually exclusive with `value`/`default`. Executed via `/bin/sh -c` (override with `shell`) with cwd the defining manifest's directory; a non-zero exit or spawn failure is a runtime error, not a manifest error."
+        },
+        "shell": {
+          "type": "string",
+          "description": "Override the shell used to run `cmd`. Defaults to `/bin/sh -c` (POSIX) or `cmd /C` on Windows. Ignored unless `cmd` is set."
+        },
         "required": { "type": "boolean", "default": false },
         "type": {
           "type": "string",
@@ -34,7 +42,11 @@
         "pattern": { "type": "string", "format": "regex" },
         "secret": { "type": "boolean", "default": false },
         "description": { "type": "string" }
-      }
+      },
+      "allOf": [
+        { "not": { "required": ["cmd", "value"] } },
+        { "not": { "required": ["cmd", "default"] } }
+      ]
     },
     "envMap": {
       "description": "Map of env names to scalar values or long-form envSpec entries.",

@@ -36,18 +36,27 @@ env:
     KIND_LOGS_TAIL:
       default: "100"
       description: Lines shown by `qavor logs` (control-plane container logs).
-    KIND_KUBECONFIG_FILE:
-      default: "runtime/kube-config.yaml"
+    KIND_KUBECONFIG_EXTERNAL_FILE:
+      default: "runtime/kube-config-external.yaml"
       description: Workspace-local kubeconfig kind writes to (isolated from ~/.kube/config). Relative to the service dir; published to dependents as an absolute path.
-  native:
-    # Every step runs with cwd = the service dir, so this relative path (and thus
-    # `kind create`, `kind delete`, and every `kubectl` here) targets the isolated
-    # kubeconfig. Dependents receive the absolute form via `publish` below.
-    KUBECONFIG: ${KIND_KUBECONFIG_FILE}
+    KIND_KUBECONFIG_INTERNAL_FILE:
+      default: "runtime/kube-config-internal.yaml"
+      description: Workspace-local kubeconfig kind writes to (isolated from ~/.kube/config). Relative to the service dir; published to dependents as an absolute path.
+    KUBECONFIG:
+      description: Kubeconfig path to use, chosen at resolve time — the internal kubeconfig when qavor itself runs inside a container, otherwise the external one.
+      cmd: |
+        if [ -f /.dockerenv ]; then
+          echo "${KIND_KUBECONFIG_INTERNAL_FILE}"
+        else
+          echo "${KIND_KUBECONFIG_EXTERNAL_FILE}"
+        fi
+    KIND_SAMPLE_MANIFESTS_DIR:
+      default: ""
+      description: A directory where manifests to be applied are stored.
   publish:
     KIND_CLUSTER_NAME: ${KIND_CLUSTER_NAME}
     KUBECONFIG_CONTEXT: kind-${KIND_CLUSTER_NAME}
-    KUBECONFIG: ${QAVOR_SERVICE_DIR}/${KIND_KUBECONFIG_FILE}
+    # KUBECONFIG: ${QAVOR_SERVICE_DIR}/${KIND_KUBECONFIG_FILE}
 runtime:
   native:
     enabled: true
@@ -64,14 +73,62 @@ runtime:
       operations:
         - cmd: |
             if kind get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER_NAME"; then
-              echo "kind cluster '$KIND_CLUSTER_NAME' already exists"
+              echo "🏗️🏗️🏗️ kind cluster '$KIND_CLUSTER_NAME' already exists"
               exit 0
             fi
-            mkdir -p "$(dirname "$KIND_KUBECONFIG_FILE")"
-            set -- --name "$KIND_CLUSTER_NAME" --image "$KIND_NODE_IMAGE" --wait "$KIND_WAIT_TIMEOUT" --kubeconfig "$KIND_KUBECONFIG_FILE"
+            echo "🏗️🏗️🏗️ Kube Context: ${KUBECONFIG_CONTEXT}"
+            set -- --name "$KIND_CLUSTER_NAME" --image "$KIND_NODE_IMAGE" --wait "$KIND_WAIT_TIMEOUT"
             if [ -n "$KIND_CONFIG" ]; then set -- "$@" --config "$KIND_CONFIG"; fi
+            echo "🏗️🏗️🏗️ Creating the cluster"
             kind create cluster "$@"
-        - cmd: kubectl --context "kind-$KIND_CLUSTER_NAME" wait --for=condition=Ready nodes --all --timeout "$KIND_WAIT_TIMEOUT"
+        - cmd: |
+            # CI / docker-in-docker: when qavor itself runs inside a container, the
+            # kind node containers are siblings on the docker host. kind writes a
+            # kubeconfig pointing at 127.0.0.1:<hostport>, which lives in the host's
+            # network namespace — not this container's — so kubectl fails with
+            # "connect: connection refused". Join the kind docker network and switch
+            # to the internal kubeconfig (server = https://<cluster>-control-plane:6443).
+            echo "🏗️🏗️🏗️ Getting external kube config..."
+            KUBE_CONFIG_DIR=$(dirname "${KIND_KUBECONFIG_EXTERNAL_FILE}")
+            mkdir -p "${KUBE_CONFIG_DIR}"
+            kind get kubeconfig --name "$KIND_CLUSTER_NAME" > "$KIND_KUBECONFIG_EXTERNAL_FILE"
+            echo "🏗️🏗️🏗️ Getting internal kube config..."
+            KUBE_CONFIG_DIR=$(dirname "${KIND_KUBECONFIG_INTERNAL_FILE}")
+            mkdir -p "${KUBE_CONFIG_DIR}"
+            kind get kubeconfig --name "$KIND_CLUSTER_NAME" --internal > "$KIND_KUBECONFIG_INTERNAL_FILE"
+            # if [ -f /.dockerenv ]; then
+            #   docker network connect kind "$(hostname)" 2>/dev/null || true
+            #   kind get kubeconfig --name "$KIND_CLUSTER_NAME" --internal > "$KIND_KUBECONFIG_FILE"
+            # fi
+        - cmd: |
+            echo "🏗️🏗️🏗️ Waiting for the cluster to come up..."
+            if [ -f /.dockerenv ]; then
+              export KUBECONFIG=${KIND_KUBECONFIG_INTERNAL_FILE}
+            else
+              export KUBECONFIG=${KIND_KUBECONFIG_EXTERNAL_FILE}
+            fi
+            echo "🏗️🏗️🏗️ KUBECONFIG: $KUBECONFIG"
+            kubectl wait --for=condition=Ready nodes --all --timeout "$KIND_WAIT_TIMEOUT"
+        - cmd: |
+            echo "🏗️🏗️🏗️ Listing pods..."
+            if [ -f /.dockerenv ]; then
+              export KUBECONFIG=${KIND_KUBECONFIG_INTERNAL_FILE}
+            else
+              export KUBECONFIG=${KIND_KUBECONFIG_EXTERNAL_FILE}
+            fi
+            echo "🏗️🏗️🏗️ KUBECONFIG: $KUBECONFIG"
+            kubectl get pods -A
+        - cmd: |
+            echo "🏗️🏗️🏗️ Sample Manifests Dir: ${KIND_SAMPLE_MANIFESTS_DIR}"
+            if [ -f /.dockerenv ]; then
+              export KUBECONFIG=${KIND_KUBECONFIG_INTERNAL_FILE}
+            else
+              export KUBECONFIG=${KIND_KUBECONFIG_EXTERNAL_FILE}
+            fi
+            echo "🏗️🏗️🏗️ KUBECONFIG: $KUBECONFIG"
+            if [ -n "${KIND_SAMPLE_MANIFESTS_DIR}" ]; then
+              kubectl apply -f "${KIND_SAMPLE_MANIFESTS_DIR}"
+            fi
     down:
       description: DELETE the kind cluster. Destructive — cluster state lives in the node containers.
       operations:

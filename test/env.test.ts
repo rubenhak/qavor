@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { composeServiceEnv, parseCliEnv } from '../src/env/composer.js';
 import { loadManifestFile } from '../src/manifest/loader.js';
 import type { ServiceManifest } from '../src/manifest/types/index.js';
+import { RuntimeFailure } from '../src/util/exit-codes.js';
 import { cleanup, makeTempDir } from './helpers/fixtures.js';
 
 async function setup(opts: {
@@ -150,6 +151,105 @@ test('env: ${secret:...} fails closed at v0', async () => {
     assert.ok(
       composed.issues.some((i) => i.message.includes('reserved')),
       'secret syntax should fail closed',
+    );
+  } finally {
+    await cleanupFn();
+  }
+});
+
+test('env: cmd resolves after static entries and can reference them as shell vars', async () => {
+  const { workspaceRoot, manifestFile, cleanupFn } = await setup({
+    manifest: [
+      'kind: service',
+      'name: alpha',
+      'env:',
+      '  common:',
+      '    HOST: { default: localhost }',
+      '    PORT: { default: 8080 }',
+      '    URL: { cmd: \'echo "http://$HOST:$PORT/api"\' }',
+      'runtime:',
+      '  native:',
+      '    enabled: true',
+      '    run: { operations: { cmd: "true" } }',
+      '',
+    ].join('\n'),
+  });
+  try {
+    const docs = await loadManifestFile(manifestFile);
+    const composed = await composeServiceEnv({
+      mode: 'native',
+      serviceDoc: docs[0]!,
+      service: docs[0]?.data as unknown as ServiceManifest,
+      workspaceRoot,
+    });
+    assert.equal(composed.issues.length, 0);
+    assert.equal(composed.values.get('URL')?.value, 'http://localhost:8080/api');
+  } finally {
+    await cleanupFn();
+  }
+});
+
+test('env: cmd stdout is trimmed and overrides a static value for the same key', async () => {
+  const { workspaceRoot, manifestFile, cleanupFn } = await setup({
+    manifest: [
+      'kind: service',
+      'name: alpha',
+      'env:',
+      '  common:',
+      '    A: { default: static }',
+      '  native:',
+      '    A: { cmd: "printf \'  dynamic\\n\'" }',
+      'runtime:',
+      '  native:',
+      '    enabled: true',
+      '    run: { operations: { cmd: "true" } }',
+      '',
+    ].join('\n'),
+  });
+  try {
+    const docs = await loadManifestFile(manifestFile);
+    const composed = await composeServiceEnv({
+      mode: 'native',
+      serviceDoc: docs[0]!,
+      service: docs[0]?.data as unknown as ServiceManifest,
+      workspaceRoot,
+    });
+    assert.equal(composed.values.get('A')?.value, 'dynamic');
+  } finally {
+    await cleanupFn();
+  }
+});
+
+test('env: a failing cmd throws RuntimeFailure (exit 3), not a collected manifest issue', async () => {
+  const { workspaceRoot, manifestFile, cleanupFn } = await setup({
+    manifest: [
+      'kind: service',
+      'name: alpha',
+      'env:',
+      '  common:',
+      '    A: { cmd: "echo boom >&2; exit 7" }',
+      'runtime:',
+      '  native:',
+      '    enabled: true',
+      '    run: { operations: { cmd: "true" } }',
+      '',
+    ].join('\n'),
+  });
+  try {
+    const docs = await loadManifestFile(manifestFile);
+    await assert.rejects(
+      composeServiceEnv({
+        mode: 'native',
+        serviceDoc: docs[0]!,
+        service: docs[0]?.data as unknown as ServiceManifest,
+        workspaceRoot,
+      }),
+      (err: unknown) => {
+        assert.ok(err instanceof RuntimeFailure);
+        assert.equal(err.exitCode, 3);
+        assert.match(err.message, /boom/);
+        return true;
+      },
     );
   } finally {
     await cleanupFn();

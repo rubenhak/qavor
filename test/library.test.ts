@@ -82,13 +82,17 @@ test('library sweep: every template is a valid profile + ready service pair', as
       );
     }
 
-    // Every parameter is a long-form envSpec with a default and a description.
+    // Every parameter is a long-form envSpec with a description, plus either
+    // a default or (for a resolve-time-derived value) a cmd.
     const common = (profile.env?.common ?? {}) as Record<string, unknown>;
     assert.ok(Object.keys(common).length > 0, `${template}: env.common parameters expected`);
     for (const [key, spec] of Object.entries(common)) {
       assert.ok(
-        typeof spec === 'object' && spec !== null && 'default' in spec && 'description' in spec,
-        `${template}: ${key} must be long-form with default + description`,
+        typeof spec === 'object' &&
+          spec !== null &&
+          ('default' in spec || 'cmd' in spec) &&
+          'description' in spec,
+        `${template}: ${key} must be long-form with (default or cmd) + description`,
       );
     }
     assert.ok(profile.env?.publish, `${template}: publish contract expected`);

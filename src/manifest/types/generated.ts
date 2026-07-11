@@ -76,6 +76,28 @@ export type RuntimeStep =
  */
 export type EnvScalar = string | number | boolean;
 /**
+ * Long-form env entry. Use when you need typing, validation, default vs override, secret marking, documentation, or a dynamically-computed value (`cmd`).
+ */
+export type EnvSpec = {
+  [k: string]: unknown | undefined;
+} & {
+  value?: EnvScalar;
+  default?: EnvScalar;
+  /**
+   * Shell script whose stdout (trimmed) becomes this var's value. Runs after every static env entry (value/default, .env files, requires, CLI --env) is fully resolved, so the script's environment already contains the static-resolved scope — reference other vars as ordinary shell variables (`$FOO` / `${FOO}`), not qavor's `${VAR}` interpolation. Mutually exclusive with `value`/`default`. Executed via `/bin/sh -c` (override with `shell`) with cwd the defining manifest's directory; a non-zero exit or spawn failure is a runtime error, not a manifest error.
+   */
+  cmd?: string;
+  /**
+   * Override the shell used to run `cmd`. Defaults to `/bin/sh -c` (POSIX) or `cmd /C` on Windows. Ignored unless `cmd` is set.
+   */
+  shell?: string;
+  required?: boolean;
+  type?: 'string' | 'int' | 'number' | 'bool' | 'url' | 'duration';
+  pattern?: string;
+  secret?: boolean;
+  description?: string;
+};
+/**
  * Merge directive controlling how a command's `operations` combine with the same command inherited from a referenced profile. Written as the value of `operations`. Exactly one of `$append`/`$prepend`/`$replace`/`$unset` may be set. `$append`/`$prepend` splice the given step(s) after / before the inherited steps; `$replace` overrides them entirely (the same effect as a bare list, stated explicitly); `$unset: true` drops the inherited command entirely. On a command with no inherited value, `$append`/`$prepend`/`$replace` simply yield the given step(s) and `$unset` is a no-op.
  */
 export type RuntimeMergeDirective = {
@@ -286,18 +308,6 @@ export interface EnvMap {
    * via the `patternProperty` "^[A-Z_][A-Z0-9_]*$".
    */
   [k: string]: EnvScalar | EnvSpec;
-}
-/**
- * Long-form env entry. Use when you need typing, validation, default vs override, secret marking, or documentation.
- */
-export interface EnvSpec {
-  value?: EnvScalar;
-  default?: EnvScalar;
-  required?: boolean;
-  type?: 'string' | 'int' | 'number' | 'bool' | 'url' | 'duration';
-  pattern?: string;
-  secret?: boolean;
-  description?: string;
 }
 /**
  * Declarative `docker compose` step. qavor interpolates `${VAR}` in every string field from the composed service env (fail-closed on unresolved names), resolves `file`/`env_file` against the defining manifest's directory (the profile's own directory when the step comes from a profile — remote profile directories are materialized locally), runs with `cwd` defaulting to the consuming service's directory, and shells out to `docker compose`. The composed env is passed to the process, so the compose file itself may use `${VAR}` interpolation natively.

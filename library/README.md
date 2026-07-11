@@ -182,8 +182,9 @@ One directory per template, self-contained: a multi-document `qavor.yaml`
 (profile `lib-<dir>` first, ready service second) plus sibling files. Uniform
 verbs (`up/down/status/logs/purge` + `check_installed`/`install`), idempotent
 `up` that blocks until ready, non-destructive `down`, data wipes only in
-`purge`. Every parameter is a long-form envSpec with `default` + `description`
-(and `secret: true` where applicable), prefixed per template; images pinned to
-exact tags. POSIX sh only in `cmd` steps. Guarded by `test/library.test.ts`.
+`purge`. Every parameter is a long-form envSpec with `description` plus either
+`default` or, for a value derived at resolve time, `cmd` (and `secret: true`
+where applicable), prefixed per template; images pinned to exact tags. POSIX
+sh only in `cmd` steps and env `cmd` scripts. Guarded by `test/library.test.ts`.
 Changing a template's interface (env names, publish keys, verbs) is a breaking
 change for pinned consumers — bump deliberately.
